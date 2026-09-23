@@ -4,48 +4,33 @@
 <header class="page-head">
   <div>
     <h1>{{ activity.title }}</h1>
-    <p class="muted">{{ activity.start_at }} 至 {{ activity.end_at }} {% if activity.location %}· {{ activity.location }}{% endif %}</p>
+    <p class="muted">{{ activity.department }} · {{ activity.start_at }} 至 {{ activity.end_at }} {% if activity.location %}· {{ activity.location }}{% endif %}</p>
   </div>
   <span class="badge badge-{{ activity.status }}">{{ activity_status[activity.status] }}</span>
 </header>
 <section class="grid two">
   <article class="card">
-    <h2>活动说明</h2>
+    <h2>说明</h2>
     <p>{{ activity.description or "没有补充说明。" }}</p>
     <p class="muted">创建人 {{ activity.creator }}{% if activity.issuer %} · {{ activity.issuer }} 于 {{ activity.issued_at }} 发放{% endif %}</p>
     <p class="muted">报名 {{ activity.signup_count }}{% if activity.capacity %} / {{ activity.capacity }}{% endif %} · 已签到 {{ activity.checkin_count }}</p>
     {% if activity.review_comment %}<p class="muted">意见：{{ activity.review_comment }}</p>{% endif %}
-    {% if activity.show_code %}
-    <p>签到码</p>
-    <div class="code-box">{{ activity.code }}</div>
-    {% endif %}
+    {% if activity.show_code %}<p>签到码</p><div class="code-box">{{ activity.code }}</div>{% endif %}
     <div class="actions" style="margin-top:0.8rem">
-      {% if activity.can_issue %}
-      <form method="post" action="/activities/{{ activity.id }}/issue"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary" type="submit">发放活动</button></form>
-      {% endif %}
-      {% if activity.can_close %}
-      <form method="post" action="/activities/{{ activity.id }}/close"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">结束活动</button></form>
-      {% endif %}
-      {% if activity.status == 'published' and not activity.signed %}
-      <form method="post" action="/activities/{{ activity.id }}/signup"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary" type="submit">报名</button></form>
-      {% endif %}
-      {% if activity.signed and not activity.checked %}
-      <form method="post" action="/activities/{{ activity.id }}/cancel"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">取消报名</button></form>
-      {% endif %}
+      {% if activity.can_issue %}<form method="post" action="/activities/{{ activity.id }}/issue"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary" type="submit">发放活动</button></form>{% endif %}
+      {% if activity.can_close %}<form method="post" action="/activities/{{ activity.id }}/close"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">结束活动</button></form>{% endif %}
+      {% if activity.status == 'published' and not activity.signed %}<form method="post" action="/activities/{{ activity.id }}/signup"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary" type="submit">报名</button></form>{% endif %}
+      {% if activity.signed and not activity.checked %}<form method="post" action="/activities/{{ activity.id }}/cancel"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">取消报名</button></form>{% endif %}
     </div>
     {% if activity.can_reject %}
     <form class="actions" method="post" action="/activities/{{ activity.id }}/reject" style="margin-top:0.6rem">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input name="comment" placeholder="驳回意见">
-      <button class="danger" type="submit">驳回</button>
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input name="comment" placeholder="驳回意见"><button class="danger" type="submit">驳回</button>
     </form>
     {% endif %}
     {% if activity.signed and not activity.checked and activity.status == 'published' %}
     <hr class="sep">
     <form class="actions" method="post" action="/activities/{{ activity.id }}/checkin">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input name="code" inputmode="numeric" placeholder="输入签到码" required>
-      <button class="primary" type="submit">签到</button>
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input name="code" inputmode="numeric" placeholder="输入签到码" required><button class="primary" type="submit">签到</button>
     </form>
     {% if not activity.checkin_open %}<p class="muted">签到开放时间是开始前 30 分钟到结束。</p>{% endif %}
     {% endif %}
@@ -56,22 +41,13 @@
     {% if activity.people %}
     <table>
       <thead><tr><th>成员</th><th>签到</th></tr></thead>
-      <tbody>
-        {% for person in activity.people %}
-        <tr>
-          <td>{{ person.name }}<div class="muted">{{ person.signed_at }} 报名</div></td>
-          <td>{% if person.checked %}{{ person.method }} · {{ person.checked_at }}{% else %}未签到{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
+      <tbody>{% for person in activity.people %}<tr><td>{{ person.name }}</td><td>{% if person.checked %}{{ person.method }} · {{ person.checked_at }}{% else %}未签到{% endif %}</td></tr>{% endfor %}</tbody>
     </table>
     {% else %}<p class="empty">还没有人报名。</p>{% endif %}
     {% if activity.can_manual and activity.unchecked %}
     <form class="actions" method="post" action="/activities/{{ activity.id }}/checkin-manual" style="margin-top:0.8rem">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <select name="user_id">
-        {% for person in activity.unchecked %}<option value="{{ person.user_id }}">{{ person.name }}</option>{% endfor %}
-      </select>
+      <select name="user_id">{% for person in activity.unchecked %}<option value="{{ person.user_id }}">{{ person.name }}</option>{% endfor %}</select>
       <button class="secondary" type="submit">补签</button>
     </form>
     {% endif %}

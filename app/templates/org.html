@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}组织架构 · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>组织架构</h1>
+    <p>按职务层级展开。一人兼任多个职务时，会在每个职务下各出现一次。每行是班级、姓名和电话。</p>
+  </div>
+</header>
+<section class="card tree">
+  {% macro branch(node) %}
+  <details open>
+    <summary>{{ node.title }} <span class="count">{{ node.people|length }}</span></summary>
+    {% if node.people %}
+    <div class="people">
+      {% for person in node.people %}
+      <div class="person-line">
+        <strong>{{ person.class_name or "未填班级" }}</strong>
+        <span>{{ person.real_name }}</span>
+        {% if person.phone %}<a href="tel:{{ person.phone }}">{{ person.phone }}</a>{% endif %}
+        <em>{{ person.college }}</em>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">这个职务还没有人。</p>{% endif %}
+    {% for child in node.children %}{{ branch(child) }}{% endfor %}
+  </details>
+  {% endmacro %}
+  {% for node in tree %}{{ branch(node) }}{% endfor %}
+</section>
+{% endblock %}

@@ -2,33 +2,25 @@
 {% block title %}活动 · {{ club_name }}{% endblock %}
 {% block content %}
 <header class="page-head">
-  <div>
-    <h1>活动</h1>
-    <p>创建后需要发放。发放后成员可以报名，并在活动时间内用签到码签到。</p>
-  </div>
+  <div><h1>活动</h1><p>草稿由部长或技术负责人维护。发放后全社成员可以报名，并在活动时间内签到。</p></div>
   {% if me.can_create_activity %}<a class="button" href="/activities/new">创建活动</a>{% endif %}
 </header>
-<div class="filters">
-  <a class="{% if not status %}on{% endif %}" href="/activities">全部</a>
-  {% for key, label in activity_status.items() %}
-  <a class="{% if status == key %}on{% endif %}" href="/activities?status={{ key }}">{{ label }}</a>
-  {% endfor %}
-</div>
 <section class="card">
   {% if activities %}
   <table>
-    <thead><tr><th>活动</th><th>时间</th><th>报名</th><th>状态</th></tr></thead>
+    <thead><tr><th>活动</th><th>范围</th><th>时间</th><th>报名</th><th>状态</th></tr></thead>
     <tbody>
       {% for item in activities %}
       <tr>
         <td><a href="/activities/{{ item.id }}">{{ item.title }}</a><div class="muted">{{ item.location }} · {{ item.creator }}{% if item.signed %} · 已报名{% endif %}</div></td>
-        <td>{{ item.start_at }}<div class="muted">至 {{ item.end_at }}</div></td>
+        <td>{{ item.department }}</td>
+        <td>{{ item.start_at }}</td>
         <td>{% if item.capacity %}{{ item.signup_count }} / {{ item.capacity }}{% else %}{{ item.signup_count }}{% endif %}</td>
         <td><span class="badge badge-{{ item.status }}">{{ activity_status[item.status] }}</span></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="empty">还没有活动。</p>{% endif %}
+  {% else %}<p class="empty">还没有你能查看的活动。</p>{% endif %}
 </section>
 {% endblock %}

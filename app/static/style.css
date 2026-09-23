@@ -50,7 +50,8 @@ p { line-height: 1.6; }
 }
 .brand strong { display: block; font-size: 1rem; }
 .brand small { color: #d5e4dc; }
-.nav { display: flex; flex-direction: column; gap: 0.25rem; }
+.nav { display: flex; flex-direction: column; gap: 0.2rem; overflow: auto; padding-right: 0.2rem; }
+.nav p { margin: 0.85rem 0.4rem 0.15rem; color: #b7cfc6; font-size: 0.75rem; letter-spacing: 0.08em; }
 .nav a, .side-links a {
   text-decoration: none; color: #e7f2ec; border-radius: 0.7rem;
   padding: 0.62rem 0.75rem; display: flex; justify-content: space-between; align-items: center;
@@ -123,7 +124,8 @@ button.secondary, a.secondary {
 }
 button.danger { background: white; color: var(--danger); border: 1px solid #eccfcf; border-radius: 0.7rem; padding: 0.5rem 0.75rem; cursor: pointer; }
 .badge { display: inline-flex; border-radius: 999px; padding: 0.12rem 0.5rem; font-size: 0.78rem; background: #eee7dc; }
-.badge-pending { background: #fff1d6; color: var(--warn); }
+.badge-draft, .badge-pending { background: #fff1d6; color: var(--warn); }
+.badge-paid { background: #e7eef8; color: #24527a; }
 .badge-active, .badge-approved, .badge-published { background: #e5f6ec; color: var(--ok); }
 .badge-rejected, .badge-disabled { background: #fde8e8; color: var(--danger); }
 .badge-archived, .badge-closed, .badge-returned { background: #eceff1; color: #52606a; }
@@ -143,6 +145,12 @@ button.danger { background: white; color: var(--danger); border: 1px solid #eccf
 .empty { color: var(--muted); padding: 0.4rem 0 0.2rem; }
 .file-row { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
+.tree details { margin: 0.35rem 0 0.35rem 0.8rem; }
+.tree summary { cursor: pointer; font-family: var(--serif); font-size: 1.05rem; }
+.person-line { display: flex; gap: 0.8rem; align-items: baseline; padding: 0.28rem 0 0.28rem 1rem; border-bottom: 1px solid #f0e9de; }
+.person-line em { color: var(--muted); font-style: normal; }
+.group-label { margin: 0.7rem 0 0.25rem; color: var(--muted); font-size: 0.82rem; }
+.count { background: #efe6d6; color: var(--ink); border-radius: 999px; padding: 0 0.4rem; font-size: 0.75rem; }
 
 @media (max-width: 900px) {
   .layout, .auth-body, .stats, .two, .person, .split, .form-grid { display: block; }

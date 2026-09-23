@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}公告 · {{ club_name }}{% endblock %}
 {% block content %}
-<header class="page-head"><div><h1>公告</h1><p>社长、副社长、部长和超级管理员可以发布。</p></div></header>
+<header class="page-head"><div><h1>公告</h1><p>全社成员都可以看。社长、副社长、指导老师和各部门部长可以发布。</p></div></header>
 <section class="grid two">
   <article class="card">
     {% if items %}
@@ -11,12 +11,7 @@
         <h3>{{ item.title }}</h3>
         <p class="muted">{{ item.author }} · {{ item.created_at }}</p>
         <p>{{ item.content }}</p>
-        {% if item.can_delete %}
-        <form method="post" action="/announcements/{{ item.id }}/delete">
-          <input type="hidden" name="csrf" value="{{ csrf }}">
-          <button class="danger" type="submit">删除</button>
-        </form>
-        {% endif %}
+        {% if item.can_delete %}<form method="post" action="/announcements/{{ item.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger" type="submit">删除</button></form>{% endif %}
       </article>
       {% endfor %}
     </div>

@@ -12,22 +12,22 @@
     <section class="auth-hero">
       <div>
         <div class="brand-mark">社</div>
-        <h1>{{ club_name }}管理系统</h1>
+        <h1>{{ club_name }}运营与资料存档</h1>
         <div class="hero-points">
-          <div><strong>立项资料</strong><p>项目审批和文件留存</p></div>
-          <div><strong>资产借用</strong><p>登记库存、审批和归还</p></div>
-          <div><strong>活动发放</strong><p>通过后向成员开放报名</p></div>
-          <div><strong>活动签到</strong><p>签到码或现场补签</p></div>
+          <div><strong>组织架构</strong><p>按职务展开，显示班级、姓名和电话</p></div>
+          <div><strong>立项资料</strong><p>部门立项、资料库和会议纪要</p></div>
+          <div><strong>活动与值班</strong><p>发放、报名、签到和值班安排</p></div>
+          <div><strong>资产与报销</strong><p>借用审批，财务收支和报销</p></div>
         </div>
       </div>
-      <p>注册后需要超级管理员审批，通过后才能进入。</p>
+      <p>注册后需超级管理员审批。可用用户名或手机号登录。</p>
     </section>
     <section class="auth-card">
       <form class="stack" method="post" action="/login">
         <h2>登录</h2>
         {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label class="field"><span>用户名</span><input name="username" autocomplete="username" required></label>
+        <label class="field"><span>用户名或手机号</span><input name="account" autocomplete="username" required></label>
         <label class="field"><span>密码</span><input name="password" type="password" autocomplete="current-password" required></label>
         <button class="primary" type="submit">进入系统</button>
         <p class="muted">还没有账号？<a href="/register">注册</a></p>

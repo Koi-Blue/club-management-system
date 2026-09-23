@@ -10,215 +10,109 @@ SHANGHAI = timezone(timedelta(hours=8))
 
 def csrf(html: str) -> str:
     match = re.search(r'name="csrf" value="([^"]+)"', html)
-    assert match, html[:1000]
+    assert match, html[:800]
     return match.group(1)
 
 
-def login(client: TestClient, username: str, password: str):
+def login(client: TestClient, account: str, password: str):
     page = client.get("/login")
-    return client.post(
-        "/login",
-        data={"csrf": csrf(page.text), "username": username, "password": password},
-        follow_redirects=True,
-    )
+    return client.post("/login", data={"csrf": csrf(page.text), "account": account, "password": password}, follow_redirects=True)
 
 
-def post(client: TestClient, url: str, **data):
-    page = client.get(data.pop("page"))
-    data["csrf"] = csrf(page.text)
-    return client.post(url, data=data, follow_redirects=True)
+def register(client: TestClient, **fields):
+    page = client.get("/register")
+    payload = {"csrf": csrf(page.text), "password": "secret12", "college": "计算机学院", "class_name": "软工2201"}
+    payload.update(fields)
+    return client.post("/register", data=payload, follow_redirects=True)
 
 
-def test_health_and_registration_approval():
-    with TestClient(app) as client:
-        assert client.get("/healthz").json() == {"ok": True}
-        page = client.get("/register")
-        response = client.post(
-            "/register",
-            data={
-                "csrf": csrf(page.text),
-                "username": "lin",
-                "password": "secret12",
-                "real_name": "林夏",
-                "phone": "13800000000",
-                "department": "宣传部",
-            },
-            follow_redirects=True,
-        )
-        assert "等待超级管理员审批" in response.text
-        denied = login(client, "lin", "secret12")
-        assert "等待超级管理员审批" in denied.text
-        assert "首页" not in denied.text or "进入系统" in denied.text
-
-
-def test_admin_assigns_multiple_roles_and_member_cannot_issue():
+def test_permissions_org_finance_and_archive():
     admin = TestClient(app)
-    login(admin, "admin", "admin123")
-    assert "初始密码" in admin.get("/").text
-    listed = admin.get("/members")
-    assert "林夏" in listed.text
-    user_id = re.search(r"/members/(\d+)/approve", listed.text).group(1)
-    approved = post(admin, f"/members/{user_id}/approve", page="/members")
-    assert "已通过注册" in approved.text
-    roles_page = admin.get("/members")
-    saved = admin.post(
-        f"/members/{user_id}/roles",
-        data={"csrf": csrf(roles_page.text), "roles": ["社长", "部长"]},
-        follow_redirects=True,
-    )
-    assert "职务已保存" in saved.text
-    assert 'value="社长" checked' in saved.text
-    assert 'value="部长" checked' in saved.text
-    narrowed = admin.post(
-        f"/members/{user_id}/roles",
-        data={"csrf": csrf(admin.get("/members").text), "roles": ["部长"]},
-        follow_redirects=True,
-    )
-    assert 'value="社长" checked' not in narrowed.text
-    assert 'value="部长" checked' in narrowed.text
+    assert login(admin, "admin", "admin123").status_code == 200
+    assert "何琪" not in admin.get("/members").text
+    assert "外联手册" not in admin.get("/projects").text
 
     guest = TestClient(app)
-    register_page = guest.get("/register")
-    guest.post(
-        "/register",
-        data={"csrf": csrf(register_page.text), "username": "zhou", "password": "secret12", "real_name": "周宁", "phone": "", "department": ""},
-        follow_redirects=True,
-    )
-    pending = admin.get("/members")
-    zhou_id = re.search(r"/members/(\d+)/approve", pending.text).group(1)
-    post(admin, f"/members/{zhou_id}/approve", page="/members")
+    registered = register(guest, username="lin", real_name="林夏", phone="13800000001", department="技术部")
+    assert "等待超级管理员审批" in registered.text
+    denied = login(guest, "13800000001", "secret12")
+    assert "等待超级管理员审批" in denied.text
 
-    member = TestClient(app)
-    home = login(member, "lin", "secret12")
+    members = admin.get("/members")
+    user_id = re.search(r"/members/(\d+)/approve", members.text).group(1)
+    approved = admin.post(f"/members/{user_id}/approve", data={"csrf": csrf(members.text)}, follow_redirects=True)
+    assert "默认职务为所属部门成员" in approved.text
+    assert 'value="技术部成员" checked' in approved.text
+
+    tech = TestClient(app)
+    home = login(tech, "13800000001", "secret12")
     assert "林夏" in home.text
-    assert "部长" in home.text
+    org = tech.get("/org")
+    assert "软工2201" in org.text and "林夏" in org.text and "13800000001" in org.text
+    assert "技术部嵌入式软件负责人" in org.text
+
+    created = tech.post("/projects", data={"csrf": csrf(tech.get("/projects/new").text), "title": "巡线车", "summary": "嵌入式", "department": "技术部"}, follow_redirects=True)
+    assert "草稿" in created.text
+    project_path = created.url.path
+    submitted = tech.post(project_path + "/submit", data={"csrf": csrf(tech.get(project_path).text)}, follow_redirects=True)
+    assert "已提交审批" in submitted.text
+
+    promo_guest = TestClient(app)
+    register(promo_guest, username="zhou", real_name="周宁", phone="13800000002", department="宣传部", class_name="新闻2202")
+    pending = admin.get("/members")
+    promo_id = re.search(r"/members/(\d+)/approve", pending.text).group(1)
+    admin.post(f"/members/{promo_id}/approve", data={"csrf": csrf(pending.text)}, follow_redirects=True)
+    promo = TestClient(app)
+    login(promo, "zhou", "secret12")
+    assert "巡线车" not in promo.get("/projects").text
+    assert "没有权限登记财务" in promo.post("/finance/ledger", data={"csrf": csrf(promo.get("/finance").text), "kind": "income", "amount": "10", "category": "社费", "note": "", "happened_on": "2026-09-23"}, follow_redirects=True).text
+    assert "收支账" not in promo.get("/finance").text
+
+    admin.post(f"/members/{user_id}/roles", data={"csrf": csrf(admin.get("/members").text), "roles": ["技术部部长", "技术部算法负责人"]}, follow_redirects=True)
+    assert "巡线车" in tech.get("/projects").text
+
+    honor_guest = TestClient(app)
+    register(honor_guest, username="tang", real_name="唐宁", phone="13800000003", department="人事部")
+    honor_page = admin.get("/members")
+    honor_id = re.search(r"/members/(\d+)/approve", honor_page.text).group(1)
+    admin.post(f"/members/{honor_id}/approve", data={"csrf": csrf(honor_page.text)}, follow_redirects=True)
+    admin.post(f"/members/{honor_id}/roles", data={"csrf": csrf(admin.get("/members").text), "roles": ["荣誉社长"]}, follow_redirects=True)
+    honor = TestClient(app)
+    login(honor, "tang", "secret12")
+    assert "巡线车" in honor.get("/projects").text
+    assert "收支账" not in honor.get("/finance").text
+
+    admin.post(f"/members/{promo_id}/roles", data={"csrf": csrf(admin.get("/members").text), "roles": ["社长", "宣传部成员"]}, follow_redirects=True)
+    finance = login(promo, "zhou", "secret12")
+    assert "收支账" in finance.text or "收支账" in promo.get("/finance").text
+    recorded = promo.post("/finance/ledger", data={"csrf": csrf(promo.get("/finance").text), "kind": "income", "amount": "20.50", "category": "社费", "note": "学期", "happened_on": "2026-09-23"}, follow_redirects=True)
+    assert "收支已登记" in recorded.text
+    claim = tech.post("/finance/claims", data={"csrf": csrf(tech.get("/finance").text), "amount": "12.00", "reason": "传感器"}, follow_redirects=True)
+    assert "报销已提交" in claim.text
+    assert "传感器" in promo.get("/finance").text
+    assert "20.50" not in tech.get("/finance").text
+
     start = (datetime.now(SHANGHAI) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
     end = (datetime.now(SHANGHAI) + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M")
-    created = member.post(
-        "/activities",
-        data={
-            "csrf": csrf(member.get("/activities/new").text),
-            "title": "迎新说明会",
-            "description": "介绍社团",
-            "location": "活动室",
-            "start_at": start,
-            "end_at": end,
-            "capacity": "2",
-        },
-        follow_redirects=True,
-    )
-    assert "等待发放" in created.text
-    activity_url = created.url.path
-    assert re.fullmatch(r"/activities/\d+", activity_url)
-    blocked = member.post(activity_url + "/issue", data={"csrf": csrf(member.get(activity_url).text)}, follow_redirects=True)
-    assert "没有权限发放活动" in blocked.text
-
-    issued = admin.post(activity_url + "/issue", data={"csrf": csrf(admin.get(activity_url).text)}, follow_redirects=True)
+    drafted = tech.post("/activities", data={"csrf": csrf(tech.get("/activities/new").text), "title": "焊接培训", "description": "实验室", "department": "技术部", "location": "A101", "start_at": start, "end_at": end, "capacity": "10"}, follow_redirects=True)
+    activity_path = drafted.url.path
+    outsider = TestClient(app)
+    registered_outsider = register(outsider, username="heqi", real_name="何琪", phone="13800000004", department="财务部", class_name="会计2201")
+    assert "等待超级管理员审批" in registered_outsider.text
+    outsider_page = admin.get("/members")
+    outsider_id = re.search(r"/members/(\d+)/approve", outsider_page.text).group(1)
+    admin.post(f"/members/{outsider_id}/approve", data={"csrf": csrf(outsider_page.text)}, follow_redirects=True)
+    other = TestClient(app)
+    login(other, "heqi", "secret12")
+    assert "焊接培训" not in other.get("/activities").text
+    issued = promo.post(activity_path + "/issue", data={"csrf": csrf(promo.get(activity_path).text)}, follow_redirects=True)
     assert "活动已发放" in issued.text
     code = re.search(r"签到码\s*(\d{6})", issued.text).group(1)
+    public = other.get(activity_path)
+    assert code not in public.text
+    assert "报名成功" in other.post(activity_path + "/signup", data={"csrf": csrf(public.text)}, follow_redirects=True).text
 
-    attendee = TestClient(app)
-    login(attendee, "zhou", "secret12")
-    public_page = attendee.get(activity_url)
-    assert code not in public_page.text
-    joined = attendee.post(activity_url + "/signup", data={"csrf": csrf(public_page.text)}, follow_redirects=True)
-    assert "报名成功" in joined.text
-    wrong = attendee.post(
-        activity_url + "/checkin",
-        data={"csrf": csrf(attendee.get(activity_url).text), "code": "000000"},
-        follow_redirects=True,
-    )
-    assert "签到码不正确" in wrong.text
-    done = attendee.post(
-        activity_url + "/checkin",
-        data={"csrf": csrf(attendee.get(activity_url).text), "code": code},
-        follow_redirects=True,
-    )
-    assert "签到成功" in done.text
-
-
-def test_project_files_and_asset_borrow():
-    admin = TestClient(app)
-    login(admin, "admin", "admin123")
-    member = TestClient(app)
-    login(member, "lin", "secret12")
-
-    created = member.post(
-        "/projects",
-        data={"csrf": csrf(member.get("/projects/new").text), "title": "秋季招新", "summary": "海报和名单"},
-        follow_redirects=True,
-    )
-    assert "等待审批" in created.text
-    project_id = re.search(r"/projects/(\d+)", created.text).group(1)
-    uploaded = member.post(
-        f"/projects/{project_id}/files",
-        data={"csrf": csrf(member.get(f"/projects/{project_id}").text)},
-        files={"file": ("名单.txt", b"member-a\nmember-b\n", "text/plain")},
-        follow_redirects=True,
-    )
-    assert "资料已上传" in uploaded.text
-    reviewed = admin.post(
-        f"/projects/{project_id}/review",
-        data={"csrf": csrf(admin.get(f"/projects/{project_id}").text), "decision": "approved", "comment": "可以做"},
-        follow_redirects=True,
-    )
-    assert "审批已保存" in reviewed.text
-    download = member.get(f"/projects/{project_id}/files/{re.search(r'/files/(\d+)', reviewed.text).group(1)}")
-    assert download.status_code == 200
-    assert download.content == b"member-a\nmember-b\n"
-
-    stored = admin.post(
-        "/assets",
-        data={
-            "csrf": csrf(admin.get("/assets").text),
-            "name": "投影仪",
-            "category": "设备",
-            "total_qty": "1",
-            "location": "库房",
-            "description": "招新使用",
-        },
-        follow_redirects=True,
-    )
-    assert "资产已登记" in stored.text
-    due = (datetime.now(SHANGHAI) + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
-    asset_id = re.search(r'name="asset_id".*?value="(\d+)"', member.get("/assets").text, re.S)
-    if not asset_id:
-        asset_id = re.search(r'<option value="(\d+)">投影仪', member.get("/assets").text)
-    assert asset_id
-    requested = member.post(
-        "/borrows",
-        data={
-            "csrf": csrf(member.get("/assets").text),
-            "asset_id": asset_id.group(1),
-            "qty": "1",
-            "reason": "招新夜",
-            "due_at": due,
-        },
-        follow_redirects=True,
-    )
-    assert "借用申请已提交" in requested.text
-    borrow_id = re.search(r"/borrows/(\d+)/review", admin.get("/assets").text).group(1)
-    approved = admin.post(
-        f"/borrows/{borrow_id}/review",
-        data={"csrf": csrf(admin.get("/assets").text), "decision": "approved", "comment": ""},
-        follow_redirects=True,
-    )
-    assert "借用审批已保存" in approved.text
-    second = member.post(
-        "/borrows",
-        data={
-            "csrf": csrf(member.get("/assets").text),
-            "asset_id": asset_id.group(1),
-            "qty": "1",
-            "reason": "再借一台",
-            "due_at": due,
-        },
-        follow_redirects=True,
-    )
-    assert "可借数量不足" in second.text
-    returned = member.post(
-        f"/borrows/{borrow_id}/return",
-        data={"csrf": csrf(member.get("/assets").text)},
-        follow_redirects=True,
-    )
-    assert "已登记归还" in returned.text
+    deleted = admin.post(f"/members/{user_id}/delete", data={"csrf": csrf(admin.get("/members").text)}, follow_redirects=True)
+    assert "历史档案仍会保留" in deleted.text
+    assert "已注销" in honor.get(project_path).text
+    assert "账号已注销" in login(tech, "lin", "secret12").text

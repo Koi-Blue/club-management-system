@@ -14,16 +14,28 @@
         <div class="brand-mark">社</div>
         <div>
           <strong>{{ club_name }}</strong>
-          <small>管理系统</small>
+          <small>运营与资料存档</small>
         </div>
       </div>
       <nav class="nav">
+        <p>工作台</p>
         <a class="{% if nav == 'home' %}active{% endif %}" href="/">首页</a>
-        <a class="{% if nav == 'members' %}active{% endif %}" href="/members">组织{% if badges.members %}<em>{{ badges.members }}</em>{% endif %}</a>
-        <a class="{% if nav == 'projects' %}active{% endif %}" href="/projects">立项资料{% if badges.projects %}<em>{{ badges.projects }}</em>{% endif %}</a>
-        <a class="{% if nav == 'assets' %}active{% endif %}" href="/assets">资产借用{% if badges.assets %}<em>{{ badges.assets }}</em>{% endif %}</a>
-        <a class="{% if nav == 'activities' %}active{% endif %}" href="/activities">活动{% if badges.activities %}<em>{{ badges.activities }}</em>{% endif %}</a>
+        <a class="{% if nav == 'approvals' %}active{% endif %}" href="/approvals">审批{% if badges.approvals %}<em>{{ badges.approvals }}</em>{% endif %}</a>
         <a class="{% if nav == 'announcements' %}active{% endif %}" href="/announcements">公告</a>
+        <p>组织</p>
+        <a class="{% if nav == 'org' %}active{% endif %}" href="/org">组织架构</a>
+        {% if me.is_admin %}<a class="{% if nav == 'members' %}active{% endif %}" href="/members">账号{% if badges.members %}<em>{{ badges.members }}</em>{% endif %}</a>{% endif %}
+        <p>事务</p>
+        <a class="{% if nav == 'activities' %}active{% endif %}" href="/activities">活动</a>
+        <a class="{% if nav == 'leave' %}active{% endif %}" href="/leave">请假</a>
+        <a class="{% if nav == 'duty' %}active{% endif %}" href="/duty">值班</a>
+        <p>资料</p>
+        <a class="{% if nav == 'projects' %}active{% endif %}" href="/projects">立项</a>
+        <a class="{% if nav == 'library' %}active{% endif %}" href="/library">部门资料</a>
+        <a class="{% if nav == 'meetings' %}active{% endif %}" href="/meetings">会议纪要</a>
+        <p>物资</p>
+        <a class="{% if nav == 'assets' %}active{% endif %}" href="/assets">资产借用</a>
+        <a class="{% if nav == 'finance' %}active{% endif %}" href="/finance">{% if me.finance %}财务{% else %}报销{% endif %}</a>
       </nav>
       <div class="side-user">
         <strong>{{ me.real_name }}</strong>

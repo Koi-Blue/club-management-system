@@ -13,7 +13,7 @@
       <div>
         <div class="brand-mark">社</div>
         <h1>加入{{ club_name }}</h1>
-        <p>提交后由超级管理员审批。通过后默认职务是成员，社长可以再分配其他职务，一个人可以兼任多个职务。</p>
+        <p>审批通过后，默认职务是所选部门的成员。社长、部长和技术负责人由超级管理员另行分配，一个人可以兼任多个职务。</p>
       </div>
     </section>
     <section class="auth-card">
@@ -23,9 +23,15 @@
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="field"><span>姓名</span><input name="real_name" required></label>
         <label class="field"><span>用户名</span><input name="username" autocomplete="username" required></label>
+        <label class="field"><span>手机号</span><input name="phone" inputmode="numeric" required></label>
         <label class="field"><span>密码</span><input name="password" type="password" autocomplete="new-password" required></label>
-        <label class="field"><span>手机</span><input name="phone"></label>
-        <label class="field"><span>部门</span><input name="department" placeholder="例如宣传部"></label>
+        <label class="field"><span>学院</span><input name="college" required></label>
+        <label class="field"><span>班级</span><input name="class_name" required></label>
+        <label class="field"><span>部门</span>
+          <select name="department" required>
+            {% for dept in ["技术部", "财务部", "人事部", "宣传部"] %}<option>{{ dept }}</option>{% endfor %}
+          </select>
+        </label>
         <button class="primary" type="submit">提交注册</button>
         <p class="muted">已有账号？<a href="/login">登录</a></p>
       </form>

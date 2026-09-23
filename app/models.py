@@ -44,6 +44,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     real_name: Mapped[str] = mapped_column(String(40))
     phone: Mapped[str] = mapped_column(String(20), default="")
+    college: Mapped[str] = mapped_column(String(40), default="")
+    class_name: Mapped[str] = mapped_column(String(40), default="")
     department: Mapped[str] = mapped_column(String(40), default="")
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -55,7 +57,7 @@ class UserRole(Base):
     __table_args__ = (UniqueConstraint("user_id", "role"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    role: Mapped[str] = mapped_column(String(20))
+    role: Mapped[str] = mapped_column(String(40))
 
 
 class Announcement(Base):
@@ -72,7 +74,8 @@ class Project(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(80))
     summary: Mapped[str] = mapped_column(Text, default="")
-    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    department: Mapped[str] = mapped_column(String(40), default="", index=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     leader_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     review_comment: Mapped[str] = mapped_column(String(200), default="")
@@ -84,6 +87,17 @@ class ProjectFile(Base):
     __tablename__ = "project_files"
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    stored_name: Mapped[str] = mapped_column(String(80))
+    original_name: Mapped[str] = mapped_column(String(180))
+    size: Mapped[int] = mapped_column(Integer)
+    uploader_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class LibraryFile(Base):
+    __tablename__ = "library_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    department: Mapped[str] = mapped_column(String(40), index=True)
     stored_name: Mapped[str] = mapped_column(String(80))
     original_name: Mapped[str] = mapped_column(String(180))
     size: Mapped[int] = mapped_column(Integer)
@@ -123,12 +137,13 @@ class Activity(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(80))
     description: Mapped[str] = mapped_column(Text, default="")
+    department: Mapped[str] = mapped_column(String(40), default="")
     location: Mapped[str] = mapped_column(String(80), default="")
     start_at: Mapped[datetime] = mapped_column(UtcDateTime())
     end_at: Mapped[datetime] = mapped_column(UtcDateTime())
     capacity: Mapped[int] = mapped_column(Integer, default=0)
     checkin_code: Mapped[str] = mapped_column(String(12), default="")
-    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     issuer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     review_comment: Mapped[str] = mapped_column(String(200), default="")
@@ -153,3 +168,62 @@ class CheckIn(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     method: Mapped[str] = mapped_column(String(20))
     checked_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class Meeting(Base):
+    __tablename__ = "meetings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(80))
+    department: Mapped[str] = mapped_column(String(40), default="")
+    held_at: Mapped[str] = mapped_column(String(16), default="")
+    location: Mapped[str] = mapped_column(String(80), default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class LedgerEntry(Base):
+    __tablename__ = "ledger_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    category: Mapped[str] = mapped_column(String(40), default="")
+    note: Mapped[str] = mapped_column(String(200), default="")
+    happened_on: Mapped[str] = mapped_column(String(10))
+    recorder_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class Reimbursement(Base):
+    __tablename__ = "reimbursements"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    review_comment: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class LeaveRequest(Base):
+    __tablename__ = "leave_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    start_on: Mapped[str] = mapped_column(String(10))
+    end_on: Mapped[str] = mapped_column(String(10))
+    reason: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    review_comment: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class DutyShift(Base):
+    __tablename__ = "duty_shifts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    duty_on: Mapped[str] = mapped_column(String(10), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    note: Mapped[str] = mapped_column(String(120), default="")
+    creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
