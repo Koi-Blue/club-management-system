@@ -10,15 +10,13 @@
 <body>
   <div class="auth-body">
     <section class="auth-card">
-      <form class="card stack" method="post" action="/login">
-        <div class="brand">
+      <form class="card stack auth-form" method="post" action="/login">
+        <div class="auth-head">
           <div class="brand-mark">社</div>
-          <div>
-            <strong>{{ club_name }}</strong>
-            <small>用用户名或手机号登录</small>
-          </div>
+          <p class="eyebrow">欢迎回来</p>
+          <h1>{{ club_name }}</h1>
+          <p class="muted">用用户名或手机号登录</p>
         </div>
-        <h1>欢迎回来</h1>
         {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="field"><span>用户名或手机号</span><input name="account" autocomplete="username" required></label>

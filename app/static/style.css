@@ -36,7 +36,7 @@ h2 { font-size: 1.02rem; margin: 0 0 0.85rem; }
 p { line-height: 1.65; margin: 0.35rem 0; }
 ::selection { background: #ddd9ff; }
 
-.layout { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+.layout { display: grid; grid-template-columns: 256px 1fr; min-height: 100vh; }
 .sidebar {
   background: rgba(255, 255, 255, 0.86);
   border-right: 1px solid var(--line);
@@ -56,7 +56,7 @@ p { line-height: 1.65; margin: 0.35rem 0; }
   color: white; font-weight: 700; font-size: 1rem;
   box-shadow: 0 8px 16px rgba(91, 77, 255, 0.22);
 }
-.brand strong { display: block; font-size: 0.98rem; letter-spacing: -0.02em; }
+.brand strong { display: block; font-size: 0.92rem; line-height: 1.35; letter-spacing: -0.03em; }
 .brand small { color: var(--muted); font-size: 0.75rem; }
 .nav { display: flex; flex-direction: column; gap: 0.12rem; overflow: auto; padding-right: 0.15rem; }
 .nav p {
@@ -208,13 +208,17 @@ button.danger {
 .flash.warn { background: #fff7e8; color: #9a5b00; }
 .auth-body {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 2rem 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 9vh 1rem 3rem;
 }
 .auth-card { width: min(440px, 100%); }
 .auth-card form, .narrow { width: 100%; }
-.auth-card h1 { font-size: 1.65rem; }
+.auth-form { padding: 1.55rem 1.4rem 1.35rem; }
+.auth-head { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+.auth-head h1 { font-size: 1.65rem; line-height: 1.3; letter-spacing: -0.04em; }
+.eyebrow { margin: 0.55rem 0 0; color: var(--accent); font-size: 0.82rem; font-weight: 650; letter-spacing: 0.08em; }
 .stack { display: flex; flex-direction: column; gap: 0.75rem; }
 .code-box {
   font-size: 1.8rem; letter-spacing: 0.28rem; font-weight: 650;

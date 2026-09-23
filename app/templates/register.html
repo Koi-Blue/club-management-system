@@ -10,15 +10,13 @@
 <body>
   <div class="auth-body">
     <section class="auth-card">
-      <form class="card stack" method="post" action="/register">
-        <div class="brand">
+      <form class="card stack auth-form" method="post" action="/register">
+        <div class="auth-head">
           <div class="brand-mark">社</div>
-          <div>
-            <strong>加入{{ club_name }}</strong>
-            <small>通过后默认为所选部门成员</small>
-          </div>
+          <p class="eyebrow">注册加入</p>
+          <h1>{{ club_name }}</h1>
+          <p class="muted">通过后默认为所选部门成员</p>
         </div>
-        <h1>注册</h1>
         {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="field"><span>姓名</span><input name="real_name" required></label>

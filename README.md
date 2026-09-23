@@ -43,7 +43,9 @@ set -a && source .env && set +a
 docker compose up -d --build
 ```
 
-站点映射到宿主机 **80** 端口。数据库和上传文件在 Docker 卷 `club-data` 里，不对公网开放。
+站点映射到宿主机 **80** 端口。账号、立项、资料和上传文件都在 Docker 卷 `club-data` 里，对应容器内的 `/app/data`。`docker compose up -d --build` 只会换镜像，不会清掉这个卷。
+
+不要执行 `docker compose down -v`，`-v` 会把卷删掉，账号就没了。
 
 备份：
 

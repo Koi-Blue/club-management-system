@@ -20,7 +20,7 @@ def load_settings() -> Settings:
     if len(password) < 6:
         raise RuntimeError("ADMIN_PASSWORD 至少需要 6 个字符")
     username = os.environ.get("ADMIN_USERNAME", "admin").strip() or "admin"
-    club_name = os.environ.get("CLUB_NAME", "社团").strip() or "社团"
+    club_name = os.environ.get("CLUB_NAME", "智机逐梦创新协会").strip() or "智机逐梦创新协会"
     return Settings(
         secret_key=secret,
         database_url=os.environ.get("DATABASE_URL", "sqlite:///./data/club.db"),

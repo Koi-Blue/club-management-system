@@ -26,6 +26,23 @@ def register(client: TestClient, **fields):
     return client.post("/register", data=payload, follow_redirects=True)
 
 
+def test_restart_keeps_registered_account():
+    from app.config import load_settings
+    from app.db import init_db
+
+    guest = TestClient(app)
+    registered = register(guest, username="keepme", real_name="留存", phone="13800000009", department="技术部")
+    assert "等待超级管理员审批" in registered.text
+    init_db(load_settings())
+    again = login(guest, "keepme", "secret12")
+    assert "等待超级管理员审批" in again.text
+    admin = TestClient(app)
+    login(admin, "admin", "admin123")
+    members = admin.get("/members")
+    user_id = re.search(r"/members/(\d+)/approve", members.text).group(1)
+    admin.post(f"/members/{user_id}/reject", data={"csrf": csrf(members.text)}, follow_redirects=True)
+
+
 def test_permissions_org_finance_and_archive():
     admin = TestClient(app)
     assert login(admin, "admin", "admin123").status_code == 200
