@@ -2,7 +2,7 @@
 {% block title %}部门资料 · {{ club_name }}{% endblock %}
 {% block content %}
 <header class="page-head">
-  <div><h1>部门资料库</h1><p>成员查看本部门资料。部长和技术负责人可以维护本部门文件，社长和指导老师可以查看全部存档。</p></div>
+  <div><h1>部门资料库</h1><p>本部门资料在这里。部长可以上传。</p></div>
 </header>
 <div class="filters">
   {% for dept in me.library_departments %}<a class="{% if current == dept %}on{% endif %}" href="/library?department={{ dept }}">{{ dept }}</a>{% endfor %}

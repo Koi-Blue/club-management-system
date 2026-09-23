@@ -9,27 +9,21 @@
 </head>
 <body>
   <div class="auth-body">
-    <section class="auth-hero">
-      <div>
-        <div class="brand-mark">社</div>
-        <h1>{{ club_name }}运营与资料存档</h1>
-        <div class="hero-points">
-          <div><strong>组织架构</strong><p>按职务展开，显示班级、姓名和电话</p></div>
-          <div><strong>立项资料</strong><p>部门立项、资料库和会议纪要</p></div>
-          <div><strong>活动与值班</strong><p>发放、报名、签到和值班安排</p></div>
-          <div><strong>资产与报销</strong><p>借用审批，财务收支和报销</p></div>
-        </div>
-      </div>
-      <p>注册后需超级管理员审批。可用用户名或手机号登录。</p>
-    </section>
     <section class="auth-card">
-      <form class="stack" method="post" action="/login">
-        <h2>登录</h2>
+      <form class="card stack" method="post" action="/login">
+        <div class="brand">
+          <div class="brand-mark">社</div>
+          <div>
+            <strong>{{ club_name }}</strong>
+            <small>用用户名或手机号登录</small>
+          </div>
+        </div>
+        <h1>欢迎回来</h1>
         {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="field"><span>用户名或手机号</span><input name="account" autocomplete="username" required></label>
         <label class="field"><span>密码</span><input name="password" type="password" autocomplete="current-password" required></label>
-        <button class="primary" type="submit">进入系统</button>
+        <button class="primary" type="submit">进入</button>
         <p class="muted">还没有账号？<a href="/register">注册</a></p>
       </form>
     </section>
