@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · {{ club_name }}</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="auth-body">
+    <section class="auth-hero">
+      <div>
+        <div class="brand-mark">社</div>
+        <h1>{{ club_name }}管理系统</h1>
+        <div class="hero-points">
+          <div><strong>立项资料</strong><p>项目审批和文件留存</p></div>
+          <div><strong>资产借用</strong><p>登记库存、审批和归还</p></div>
+          <div><strong>活动发放</strong><p>通过后向成员开放报名</p></div>
+          <div><strong>活动签到</strong><p>签到码或现场补签</p></div>
+        </div>
+      </div>
+      <p>注册后需要超级管理员审批，通过后才能进入。</p>
+    </section>
+    <section class="auth-card">
+      <form class="stack" method="post" action="/login">
+        <h2>登录</h2>
+        {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="field"><span>用户名</span><input name="username" autocomplete="username" required></label>
+        <label class="field"><span>密码</span><input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary" type="submit">进入系统</button>
+        <p class="muted">还没有账号？<a href="/register">注册</a></p>
+      </form>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ club_name }}{% endblock %}</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">社</div>
+        <div>
+          <strong>{{ club_name }}</strong>
+          <small>管理系统</small>
+        </div>
+      </div>
+      <nav class="nav">
+        <a class="{% if nav == 'home' %}active{% endif %}" href="/">首页</a>
+        <a class="{% if nav == 'members' %}active{% endif %}" href="/members">组织{% if badges.members %}<em>{{ badges.members }}</em>{% endif %}</a>
+        <a class="{% if nav == 'projects' %}active{% endif %}" href="/projects">立项资料{% if badges.projects %}<em>{{ badges.projects }}</em>{% endif %}</a>
+        <a class="{% if nav == 'assets' %}active{% endif %}" href="/assets">资产借用{% if badges.assets %}<em>{{ badges.assets }}</em>{% endif %}</a>
+        <a class="{% if nav == 'activities' %}active{% endif %}" href="/activities">活动{% if badges.activities %}<em>{{ badges.activities }}</em>{% endif %}</a>
+        <a class="{% if nav == 'announcements' %}active{% endif %}" href="/announcements">公告</a>
+      </nav>
+      <div class="side-user">
+        <strong>{{ me.real_name }}</strong>
+        <small>{{ me.role_text }}</small>
+        <div class="side-links">
+          <a href="/profile">账号设置</a>
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="link-button" type="submit">退出</button>
+          </form>
+        </div>
+      </div>
+    </aside>
+    <main class="main">
+      {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
+      {% if me.warn_password %}<div class="flash warn">当前仍是初始密码。请到账号设置里马上修改。</div>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

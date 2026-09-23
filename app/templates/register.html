@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>注册 · {{ club_name }}</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="auth-body">
+    <section class="auth-hero">
+      <div>
+        <div class="brand-mark">社</div>
+        <h1>加入{{ club_name }}</h1>
+        <p>提交后由超级管理员审批。通过后默认职务是成员，社长可以再分配其他职务，一个人可以兼任多个职务。</p>
+      </div>
+    </section>
+    <section class="auth-card">
+      <form class="stack" method="post" action="/register">
+        <h2>注册</h2>
+        {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="field"><span>姓名</span><input name="real_name" required></label>
+        <label class="field"><span>用户名</span><input name="username" autocomplete="username" required></label>
+        <label class="field"><span>密码</span><input name="password" type="password" autocomplete="new-password" required></label>
+        <label class="field"><span>手机</span><input name="phone"></label>
+        <label class="field"><span>部门</span><input name="department" placeholder="例如宣传部"></label>
+        <button class="primary" type="submit">提交注册</button>
+        <p class="muted">已有账号？<a href="/login">登录</a></p>
+      </form>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ project.title }} · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>{{ project.title }}</h1>
+    <p class="muted">{{ project.leader }} · {{ project.created_at }} · <span class="badge badge-{{ project.status }}">{{ project_status[project.status] }}</span></p>
+  </div>
+</header>
+<section class="grid two">
+  <article class="card">
+    <h2>说明</h2>
+    <p>{{ project.summary or "没有补充说明。" }}</p>
+    {% if project.review_comment %}<p class="muted">审批意见：{{ project.reviewer }} · {{ project.review_comment }}</p>{% endif %}
+    <div class="actions">
+      {% if project.can_resubmit %}
+      <form method="post" action="/projects/{{ project.id }}/resubmit"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary" type="submit">重新提交</button></form>
+      {% endif %}
+      {% if project.can_archive %}
+      <form method="post" action="/projects/{{ project.id }}/archive"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">归档留存</button></form>
+      {% endif %}
+    </div>
+    {% if project.can_review %}
+    <hr class="sep">
+    <form class="stack" method="post" action="/projects/{{ project.id }}/review">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>审批意见</span><input name="comment"></label>
+      <div class="actions">
+        <button class="primary" name="decision" value="approved" type="submit">通过</button>
+        <button class="danger" name="decision" value="rejected" type="submit">驳回</button>
+      </div>
+    </form>
+    {% endif %}
+  </article>
+  <article class="card">
+    <h2>资料留存</h2>
+    {% if project.files %}
+    <div class="list">
+      {% for file in project.files %}
+      <div class="item file-row">
+        <div>
+          <a href="/projects/{{ project.id }}/files/{{ file.id }}">{{ file.name }}</a>
+          <p class="muted">{{ file.uploader }} · {{ file.uploaded_at }} · {{ "%.0f"|format(file.size / 1024) }} KB</p>
+        </div>
+        {% if file.can_delete %}
+        <form method="post" action="/projects/{{ project.id }}/files/{{ file.id }}/delete">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="danger" type="submit">删除</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有上传资料。</p>{% endif %}
+    {% if project.can_upload %}
+    <form class="stack" style="margin-top:1rem" method="post" action="/projects/{{ project.id }}/files" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>上传文件，最大 20MB</span><input type="file" name="file" required></label>
+      <button class="secondary" type="submit">上传</button>
+    </form>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

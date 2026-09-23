@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}首页 · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>{{ club_name }}</h1>
+    <p>立项、资料、资产和活动都从这里进入。</p>
+  </div>
+</header>
+<section class="grid stats">
+  <article class="card stat"><span>在册成员</span><strong>{{ stats.members }}</strong></article>
+  <article class="card stat"><span>立项</span><strong>{{ stats.projects }}</strong></article>
+  <article class="card stat"><span>资产种类</span><strong>{{ stats.assets }}</strong></article>
+  <article class="card stat"><span>借出件数</span><strong>{{ stats.on_loan }}</strong></article>
+</section>
+{% if todos %}
+<div class="todo" style="margin-top:1rem">
+  {% for item in todos %}<a href="{{ item.href }}">{{ item.text }}</a>{% endfor %}
+</div>
+{% endif %}
+<section class="grid two" style="margin-top:1rem">
+  <article class="card">
+    <h2>近期活动</h2>
+    {% if upcoming %}
+    <div class="list">
+      {% for item in upcoming %}
+      <a class="item" href="/activities/{{ item.id }}">
+        <h3>{{ item.title }}</h3>
+        <p class="muted">{{ item.start_at }} {% if item.location %}· {{ item.location }}{% endif %}{% if item.signed %} · 已报名{% endif %}</p>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有已发放的活动。</p>{% endif %}
+  </article>
+  <article class="card">
+    <h2>公告</h2>
+    {% if news %}
+    <div class="list">
+      {% for item in news %}
+      <div class="item">
+        <h3>{{ item.title }}</h3>
+        <p class="muted">{{ item.author }} · {{ item.created_at }}</p>
+        <p>{{ item.content }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有公告。</p>{% endif %}
+  </article>
+</section>
+{% endblock %}
