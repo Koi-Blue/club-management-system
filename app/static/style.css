@@ -7,9 +7,9 @@
   --accent: #3a3f46;
   --accent-dark: #1f2328;
   --accent-soft: #eceff3;
-  --ok: #0f9f6e;
-  --warn: #b86e00;
-  --danger: #e11d48;
+  --ok: #2f343b;
+  --warn: #5c636c;
+  --danger: #1c1e22;
   --shadow: 0 10px 30px rgba(28, 31, 46, 0.05);
   --sans: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
   --radius: 16px;
@@ -94,7 +94,7 @@ p { line-height: 1.65; margin: 0.35rem 0; }
   background: transparent; border: 0; color: var(--muted); padding: 0.28rem 0.45rem;
   cursor: pointer; border-radius: 0.55rem; text-decoration: none; font-size: 0.86rem;
 }
-.side-links a:hover, .link-button:hover { background: #f2f3f8; color: var(--ink); }
+.side-links a:hover, .link-button:hover { background: #f3f4f6; color: var(--ink); }
 .main { padding: 1.7rem 2rem 3rem; max-width: 1120px; }
 .page-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-end; margin-bottom: 1.15rem; }
 .page-head p, .muted { color: var(--muted); margin: 0.35rem 0 0; }
@@ -110,9 +110,9 @@ p { line-height: 1.65; margin: 0.35rem 0; }
 .todo { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
 .todo a {
   text-decoration: none;
-  background: #fff8ee;
-  border: 1px solid #f3dfc0;
-  color: #8a5a10;
+  background: #f4f5f7;
+  border: 1px solid #d5d8de;
+  color: #3a3f46;
   border-radius: 999px;
   padding: 0.42rem 0.8rem;
   font-size: 0.9rem;
@@ -141,20 +141,20 @@ p { line-height: 1.65; margin: 0.35rem 0; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.7rem 0.35rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: 0.78rem; letter-spacing: 0.04em; }
-tbody tr:hover td { background: #fafbff; }
+tbody tr:hover td { background: #f7f8fa; }
 .roles { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .roles label {
   display: flex; gap: 0.35rem; align-items: center;
   border: 1px solid var(--line); border-radius: 999px;
-  padding: 0.28rem 0.65rem; background: #fafbff; font-size: 0.86rem;
+  padding: 0.28rem 0.65rem; background: #f7f8fa; font-size: 0.86rem;
 }
 .roles input { width: auto; accent-color: var(--accent); }
 .actions { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: center; margin-top: 0.7rem; }
 label.field { display: flex; flex-direction: column; gap: 0.32rem; font-size: 0.9rem; }
 label.field span { color: var(--muted); }
 input, textarea, select {
-  background: #fbfbfe;
-  border: 1px solid #e1e4ee;
+  background: #f7f8fa;
+  border: 1px solid #e4e6ea;
   border-radius: 0.8rem;
   padding: 0.68rem 0.75rem;
   width: 100%;
@@ -187,7 +187,7 @@ button.secondary, a.secondary {
   border-radius: 0.8rem; padding: 0.55rem 0.8rem; cursor: pointer; text-decoration: none;
 }
 button.danger {
-  background: white; color: var(--danger); border: 1px solid #ffd5df;
+  background: white; color: var(--danger); border: 1px solid #c5c8ce;
   border-radius: 0.8rem; padding: 0.55rem 0.8rem; cursor: pointer;
 }
 .badge {
@@ -195,15 +195,15 @@ button.danger {
   border-radius: 999px; padding: 0.12rem 0.5rem;
   font-size: 0.75rem; background: #f1f2f6; color: #4b5160;
 }
-.badge-draft, .badge-pending { background: #fff4df; color: var(--warn); }
-.badge-paid { background: #e8f0ff; color: #2457b5; }
-.badge-active, .badge-approved, .badge-published { background: #e7f8f1; color: var(--ok); }
-.badge-rejected, .badge-disabled, .badge-deleted { background: #ffe8ee; color: var(--danger); }
+.badge-draft, .badge-pending { background: #eceff3; color: var(--warn); }
+.badge-paid { background: #e4e6ea; color: #3a3f46; }
+.badge-active, .badge-approved, .badge-published { background: #e4e6ea; color: var(--ok); }
+.badge-rejected, .badge-disabled, .badge-deleted { background: #d9dde3; color: var(--danger); }
 .badge-archived, .badge-closed, .badge-returned { background: #f1f2f6; color: #52606a; }
 .flash { border-radius: 0.9rem; padding: 0.72rem 0.9rem; margin-bottom: 0.9rem; }
-.flash.ok { background: #e9f8f2; color: #0c7a54; }
-.flash.error { background: #fff0f3; color: #be123c; }
-.flash.warn { background: #fff7e8; color: #9a5b00; }
+.flash.ok { background: #eceff3; color: #1f2328; }
+.flash.error { background: #e4e6ea; color: #1c1e22; }
+.flash.warn { background: #f4f5f7; color: #3a3f46; }
 .auth-body {
   min-height: 100vh;
   display: flex;
