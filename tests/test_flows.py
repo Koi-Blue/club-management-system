@@ -121,7 +121,7 @@ def test_permissions_org_finance_and_archive():
     assert "收支账" in finance.text or "收支账" in promo.get("/finance").text
     recorded = promo.post("/finance/ledger", data={"csrf": csrf(promo.get("/finance").text), "kind": "income", "amount": "20.50", "category": "社费", "note": "学期", "happened_on": "2026-09-23"}, follow_redirects=True)
     assert "收支已登记" in recorded.text
-    claim = tech.post("/finance/claims", data={"csrf": csrf(tech.get("/finance").text), "amount": "12.00", "reason": "传感器"}, follow_redirects=True)
+    claim = tech.post("/finance/claims", data={"csrf": csrf(tech.get("/finance").text), "amount": "12.00", "reason": "传感器"}, files=[("invoices", ("发票.pdf", b"%PDF-1.4\ninvoice", "application/pdf")), ("qr", ("收款.png", b"\x89PNG\r\n\x1a\nqr", "image/png"))], follow_redirects=True)
     assert "报销已提交" in claim.text
     assert "传感器" in promo.get("/finance").text
     assert "20.50" not in tech.get("/finance").text

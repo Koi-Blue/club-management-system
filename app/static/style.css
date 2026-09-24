@@ -266,3 +266,43 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
   .main { padding: 1rem 0.9rem 2.4rem; }
   .person-line em { margin-left: 0; }
 }
+
+/* 有连线的父子节点；独立职务在图外。 */
+.org-layout { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 1rem; align-items: start; }
+.org-independent { display: grid; gap: 0.8rem; }
+.org-chart { overflow-x: auto; }
+.org-chart ul { list-style: none; padding: 0 0 0 1.6rem; margin: 0; }
+.org-chart > ul { padding-left: 0; }
+.org-chart li { position: relative; padding: 0.65rem 0 0 1.2rem; border-left: 1px solid #b9bec7; }
+.org-chart li::before { content: ""; position: absolute; left: 0; top: 1.9rem; width: 1.2rem; border-top: 1px solid #b9bec7; }
+.org-chart > ul > li { border: 0; padding-left: 0; }
+.org-chart > ul > li::before { display: none; }
+.org-node { border: 1px solid var(--line); border-radius: 0.8rem; background: #fafbfc; padding: 0.7rem; }
+.org-node h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.org-node .people { margin: 0; }
+.org-node .person { background: white; }
+.org-node .person summary { cursor: pointer; padding: 0.3rem 0; }
+.org-node .empty { margin: 0; font-size: 0.85rem; }
+.prose { min-width: 0; overflow-wrap: anywhere; line-height: 1.75; }
+.prose > :first-child { margin-top: 0; }
+.prose > :last-child { margin-bottom: 0; }
+.prose img { max-width: 100%; height: auto; }
+.prose table { display: block; max-width: 100%; overflow-x: auto; }
+.prose th, .prose td { border: 1px solid var(--line); padding: 0.5rem 0.75rem; min-width: 5rem; }
+.prose blockquote { border-left: 3px solid #b9bec7; margin-left: 0; padding-left: 1rem; color: var(--muted); }
+.prose pre code { white-space: pre; }
+.prose li + li { margin-top: 0.2rem; }
+.comment-section { margin-top: 1rem; }
+.checkbox-field { display: flex; gap: 0.5rem; align-items: center; }
+.checkbox-field input { width: auto; }
+.payment-qr { display: block; width: 220px; max-width: 100%; height: auto; margin: 0.7rem 0; }
+.claim-files { margin: 0.7rem 0; }
+.claim-files summary { cursor: pointer; }
+@media (max-width: 900px) {
+  .org-layout { grid-template-columns: minmax(0, 1fr); }
+  .org-chart { padding: 0.7rem; }
+  .org-chart ul { padding-left: 0.55rem; }
+  .org-chart li { padding-left: 0.55rem; }
+  .org-chart li::before { width: 0.55rem; }
+  .org-chart > ul { padding-left: 0; }
+}

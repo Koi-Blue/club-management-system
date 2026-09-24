@@ -6,3 +6,5 @@ __pycache__
 data
 tests
 *.md
+*.pyc
+backups

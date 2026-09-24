@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}论坛 · {{ club_name }}{% endblock %}
 {% block content %}
-<header class="page-head"><div><h1>论坛</h1><p>发帖时选择谁能看。技术部可以精确到方向、整个技术部或全社。</p></div></header>
+<header class="page-head"><div><h1>论坛</h1><p>发帖时选择谁能看。根据当前职务和方向选择范围，新成员也能看到对应范围的历史帖子。</p></div></header>
 <section class="grid two">
   <article class="card">
     {% if items %}
@@ -20,7 +20,7 @@
       <select name="scope">{% for item in choices %}<option value="{{ item.value }}">{{ item.label }}</option>{% endfor %}
       </select>
     </label>
-    <label class="field"><span>正文</span><textarea name="body" required></textarea></label>
+    <label class="field"><span>正文（Markdown）</span><textarea name="body" required></textarea></label>
     <button class="primary" type="submit">发布</button>
   </form>
 </section>

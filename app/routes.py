@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from starlette.datastructures import UploadFile
 
 from app.config import Settings
 from app.markdown import render_markdown
@@ -18,6 +19,7 @@ from app.models import (
     CheckIn,
     DutyShift,
     ForumPost,
+    ForumComment,
     Journal,
     LeaveRequest,
     LedgerEntry,
@@ -26,6 +28,7 @@ from app.models import (
     Project,
     ProjectFile,
     Reimbursement,
+    ReimbursementFile,
     Signup,
     User,
     utcnow,
@@ -36,6 +39,8 @@ from app.org import (
     DEPT_MEMBERS,
     MINISTERS,
     TECH_LEADS,
+    TECH_DIRECTIONS,
+    TECH_MEMBERS,
     can_announce,
     can_approve_borrow,
     can_approve_project,
@@ -48,6 +53,8 @@ from app.org import (
 from app.security import captcha_matches, issue_token, new_captcha, read_user_id, sign_captcha, verify_password
 from app.services import AppError
 import app.services as svc
+import app.forum as forum
+import app.reimbursements as claims_svc
 
 PROJECT_STATUS = {"draft": "草稿", "pending": "待审批", "approved": "进行中", "rejected": "已驳回", "archived": "已归档"}
 ACTIVITY_STATUS = {"draft": "待发放", "published": "已发放", "rejected": "已驳回", "closed": "已结束"}
@@ -67,6 +74,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         leave_status=LEAVE_STATUS,
         claim_status=CLAIM_STATUS,
         departments=DEPARTMENTS,
+        tech_directions=[name for name, _ in TECH_DIRECTIONS],
     )
 
     def render(request: Request, name: str, context: dict, status_code: int = 200):
@@ -161,6 +169,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
                 ("部长", MINISTERS),
                 ("技术负责人", TECH_LEADS),
                 ("部门成员", DEPT_MEMBERS),
+                ("技术部成员方向（可多选）", TECH_MEMBERS),
             ],
         }
         context.update(extra)
@@ -172,8 +181,11 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             total += int(db.scalar(select(func.count()).select_from(User).where(User.status == "pending")) or 0)
         if can_approve_project(user.is_admin, roles):
             total += int(db.scalar(select(func.count()).select_from(Project).where(Project.status == "pending")) or 0)
-        if can_issue_activity(user.is_admin, roles):
-            total += int(db.scalar(select(func.count()).select_from(Activity).where(Activity.status == "draft")) or 0)
+        if can_issue_activity(user.is_admin, roles) or "荣誉社长" in roles:
+            drafts = select(func.count()).select_from(Activity).where(Activity.status == "draft")
+            if not can_issue_activity(user.is_admin, roles):
+                drafts = drafts.where(Activity.creator_id == user.id)
+            total += int(db.scalar(drafts) or 0)
         if can_approve_borrow(user.is_admin, roles):
             total += int(db.scalar(select(func.count()).select_from(Borrow).where(Borrow.status == "pending")) or 0)
         if sees_finance(user.is_admin, roles):
@@ -235,7 +247,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             flash(request, "验证码不正确或已过期", "error")
             return redirect("/register")
         try:
-            svc.register_user(db, str(form.get("username") or ""), str(form.get("password") or ""), str(form.get("real_name") or ""), str(form.get("phone") or ""), str(form.get("college") or ""), str(form.get("class_name") or ""), str(form.get("department") or ""))
+            svc.register_user(db, str(form.get("username") or ""), str(form.get("password") or ""), str(form.get("real_name") or ""), str(form.get("phone") or ""), str(form.get("college") or ""), str(form.get("class_name") or ""), str(form.get("department") or ""), str(form.get("direction") or ""))
         except AppError as exc:
             return fail(request, "/register", exc)
         flash(request, "注册已提交，请等待超级管理员审批后再登录")
@@ -266,7 +278,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             todos.append({"href": "/members", "text": "有注册账号待审批"})
         if can_approve_project(user.is_admin, roles) and db.scalar(select(func.count()).select_from(Project).where(Project.status == "pending")):
             todos.append({"href": "/approvals", "text": "有立项待审批"})
-        if can_issue_activity(user.is_admin, roles) and db.scalar(select(func.count()).select_from(Activity).where(Activity.status == "draft")):
+        if any(svc.may_issue_activity(user, roles, draft) for draft in db.scalars(select(Activity).where(Activity.status == "draft"))):
             todos.append({"href": "/approvals", "text": "有活动待发放"})
         if sees_finance(user.is_admin, roles) and db.scalar(select(func.count()).select_from(Reimbursement).where(Reimbursement.status == "pending")):
             todos.append({"href": "/finance", "text": "有报销待审批"})
@@ -284,7 +296,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         user, bounce = guard(request, db)
         if bounce:
             return bounce
-        return render(request, "org.html", shell(request, db, user, "org", tree=svc.build_org_tree(db, user, svc.roles_of(db, user.id))))
+        return render(request, "org.html", shell(request, db, user, "org", **svc.build_org_tree(db, user, svc.roles_of(db, user.id))))
 
     @app.get("/members")
     def members_page(request: Request, db: Session = Depends(get_db)):
@@ -604,7 +616,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if not can_create_activity(user.is_admin, roles):
             flash(request, "没有权限创建活动", "error")
             return redirect("/activities")
-        scopes = ["全社"] + (DEPARTMENTS if can_issue_activity(user.is_admin, roles) or user.is_admin else sorted(svc.managed_departments(roles)))
+        scopes = ["全社"] + (DEPARTMENTS if can_issue_activity(user.is_admin, roles) or "荣誉社长" in roles else sorted(svc.managed_departments(roles)))
         return render(request, "activity_new.html", shell(request, db, user, "activities", scopes=scopes))
 
     @app.post("/activities")
@@ -650,7 +662,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             "signup_count": len(signups), "checkin_count": len(checkins), "signed": any(row.user_id == user.id for row in signups),
             "checked": user.id in checkins, "checkin_open": svc.checkin_open(activity), "show_code": show_code,
             "code": activity.checkin_code if show_code else "",
-            "can_issue": can_issue_activity(user.is_admin, roles) and activity.status in {"draft", "rejected"},
+            "can_issue": svc.may_issue_activity(user, roles, activity) and activity.status in {"draft", "rejected"},
             "can_reject": can_issue_activity(user.is_admin, roles) and activity.status == "draft",
             "can_close": activity.status == "published" and (activity.creator_id == user.id or can_issue_activity(user.is_admin, roles)),
             "can_manual": activity.status in {"published", "closed"} and (user.is_admin or can_issue_activity(user.is_admin, roles) or activity.department in svc.managed_departments(roles) or activity.creator_id == user.id),
@@ -761,6 +773,9 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         claims = db.scalars(select(Reimbursement).order_by(Reimbursement.created_at.desc())).all()
         claims = [row for row in claims if svc.can_view_reimbursement(user, roles, row)]
         names = svc.name_map(db, {row.user_id for row in claims})
+        claim_files = {}
+        for file in db.scalars(select(ReimbursementFile).where(ReimbursementFile.reimbursement_id.in_([row.id for row in claims])).order_by(ReimbursementFile.id)):
+            claim_files.setdefault(file.reimbursement_id, []).append(file)
         ledger = []
         balance = 0
         if finance:
@@ -773,7 +788,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             balance = sum(row.amount_cents if row.kind == "income" else -row.amount_cents for row in entries)
         return render(request, "finance.html", shell(
             request, db, user, "finance", finance=finance, balance=svc.money(balance), ledger=ledger,
-            claims=[{"id": row.id, "user": names.get(row.user_id, "已注销"), "amount": svc.money(row.amount_cents), "reason": row.reason, "status": row.status, "comment": row.review_comment, "mine": row.user_id == user.id} for row in claims],
+            claims=[{"id": row.id, "user": names.get(row.user_id, "已注销"), "amount": svc.money(row.amount_cents), "reason": row.reason, "status": row.status, "comment": row.review_comment, "mine": row.user_id == user.id, "files": claim_files.get(row.id, [])} for row in claims],
         ))
 
     @app.post("/finance/ledger")
@@ -782,7 +797,50 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
 
     @app.post("/finance/claims")
     async def finance_claim(request: Request, db: Session = Depends(get_db)):
-        return await simple_post(request, db, "/finance", lambda actor, _roles, form: svc.request_reimbursement(db, actor, str(form.get("amount") or ""), str(form.get("reason") or "")), "报销已提交")
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        async with request.form(max_files=11, max_fields=10) as form:
+            if not csrf_ok(request, str(form.get("csrf") or "")):
+                return fail(request, "/finance", AppError("页面已过期，请刷新后重试"))
+            try:
+                invoices = [file for file in form.getlist("invoices") if isinstance(file, UploadFile) and file.filename]
+                qr_files = [file for file in form.getlist("qr") if isinstance(file, UploadFile) and file.filename]
+                if not 1 <= len(invoices) <= claims_svc.MAX_INVOICES or len(qr_files) != 1:
+                    raise AppError("请上传 1 到 10 份发票和一张收款二维码")
+                payloads = []
+                total = 0
+                for file in invoices + qr_files:
+                    data = await file.read(svc.MAX_FILE_SIZE + 1)
+                    if len(data) > svc.MAX_FILE_SIZE:
+                        raise AppError("单个文件不能超过 20MB")
+                    total += len(data)
+                    if total > claims_svc.MAX_TOTAL_SIZE:
+                        raise AppError("本次报销附件合计不能超过 50MB")
+                    payloads.append((file.filename, data))
+                claims_svc.request_reimbursement(db, user, settings.upload_dir, str(form.get("amount") or ""),
+                                                str(form.get("reason") or ""), payloads[:-1], payloads[-1])
+            except AppError as exc:
+                return fail(request, "/finance", exc)
+        flash(request, "报销已提交")
+        return redirect("/finance")
+
+    @app.get("/finance/claims/{item_id}/files/{file_id}")
+    def finance_file(item_id: int, file_id: int, request: Request, download: bool = False, db: Session = Depends(get_db)):
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        claim = db.get(Reimbursement, item_id)
+        file = db.get(ReimbursementFile, file_id)
+        if claim is None or not svc.can_view_reimbursement(user, svc.roles_of(db, user.id), claim) or file is None or file.reimbursement_id != item_id:
+            return Response(status_code=404)
+        path = svc.safe_path(settings.upload_dir, ["reimbursements", str(item_id), file.stored_name])
+        if not path.is_file():
+            return Response(status_code=404)
+        media = claims_svc.MEDIA_TYPES[Path(file.stored_name).suffix.lower()]
+        disposition = "inline" if media.startswith("image/") and not download else "attachment"
+        return FileResponse(path, filename=file.original_name, media_type=media, content_disposition_type=disposition,
+                            headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
     @app.post("/finance/claims/{item_id}/review")
     async def finance_review(item_id: int, request: Request, db: Session = Depends(get_db)):
@@ -866,8 +924,10 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if can_approve_project(user.is_admin, roles):
             for row in db.scalars(select(Project).where(Project.status == "pending")).all():
                 items.append({"href": f"/projects/{row.id}", "kind": "立项", "title": row.title, "meta": row.department})
-        if can_issue_activity(user.is_admin, roles):
+        if can_issue_activity(user.is_admin, roles) or "荣誉社长" in roles:
             for row in db.scalars(select(Activity).where(Activity.status == "draft")).all():
+                if not svc.may_issue_activity(user, roles, row):
+                    continue
                 items.append({"href": f"/activities/{row.id}", "kind": "活动发放", "title": row.title, "meta": row.department or "全社"})
         if can_approve_borrow(user.is_admin, roles):
             for row in db.scalars(select(Borrow).where(Borrow.status == "pending")).all():
@@ -981,14 +1041,14 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if bounce:
             return bounce
         roles = svc.roles_of(db, user.id)
-        rows = [row for row in db.scalars(select(ForumPost).order_by(ForumPost.created_at.desc())).all() if svc.can_view_post(user, roles, row)]
+        rows = [row for row in db.scalars(select(ForumPost).order_by(ForumPost.created_at.desc())).all() if forum.can_view_post(user, roles, row)]
         names = svc.name_map(db, {row.author_id for row in rows})
-        items = [{"id": row.id, "title": row.title, "author": names.get(row.author_id, "已注销"), "scope": svc.scope_label(row), "created_at": svc.fmt_dt(row.created_at)} for row in rows]
-        return render(request, "forum.html", shell(request, db, user, "forum", items=items, choices=svc.forum_choices(user, roles)))
+        items = [{"id": row.id, "title": row.title, "author": names.get(row.author_id, "已注销"), "scope": forum.scope_label(row), "created_at": svc.fmt_dt(row.created_at)} for row in rows]
+        return render(request, "forum.html", shell(request, db, user, "forum", items=items, choices=forum.forum_choices(user, roles)))
 
     @app.post("/forum")
     async def forum_create(request: Request, db: Session = Depends(get_db)):
-        return await simple_post(request, db, "/forum", lambda actor, roles, form: svc.create_post(db, actor, roles, str(form.get("title") or ""), str(form.get("body") or ""), str(form.get("scope") or "")), "帖子已发布")
+        return await simple_post(request, db, "/forum", lambda actor, roles, form: forum.create_post(db, actor, roles, str(form.get("title") or ""), str(form.get("body") or ""), str(form.get("scope") or "")), "帖子已发布")
 
     @app.get("/forum/{post_id}")
     def forum_detail(post_id: int, request: Request, db: Session = Depends(get_db)):
@@ -997,16 +1057,34 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return bounce
         post = db.get(ForumPost, post_id)
         roles = svc.roles_of(db, user.id)
-        if post is None or not svc.can_view_post(user, roles, post):
+        if post is None or not forum.can_view_post(user, roles, post):
             flash(request, "找不到这篇帖子，或不在你的查看范围内", "error")
             return redirect("/forum")
         names = svc.name_map(db, {post.author_id})
-        detail = {"id": post.id, "title": post.title, "html": render_markdown(post.body), "author": names.get(post.author_id, "已注销"), "scope": svc.scope_label(post), "created_at": svc.fmt_dt(post.created_at), "can_delete": post.author_id == user.id or user.is_admin}
-        return render(request, "forum_detail.html", shell(request, db, user, "forum", post=detail))
+        detail = {"id": post.id, "title": post.title, "html": render_markdown(post.body), "author": names.get(post.author_id, "已注销"), "scope": forum.scope_label(post), "created_at": svc.fmt_dt(post.created_at), "can_delete": post.author_id == user.id or user.is_admin}
+        comments = db.scalars(select(ForumComment).where(ForumComment.post_id == post.id).order_by(ForumComment.created_at, ForumComment.id)).all()
+        authors = svc.name_map(db, {row.author_id for row in comments if not row.anonymous or user.is_admin})
+        visible_comments = [{
+            "id": row.id, "author": "匿名成员" if row.anonymous else authors.get(row.author_id, "已注销"),
+            "audit_author": authors.get(row.author_id, "已注销") if row.anonymous and user.is_admin else "",
+            "mine": row.author_id == user.id, "can_delete": user.is_admin or row.author_id == user.id,
+            "html": render_markdown(row.body), "created_at": svc.fmt_dt(row.created_at),
+        } for row in comments]
+        response = render(request, "forum_detail.html", shell(request, db, user, "forum", post=detail, comments=visible_comments))
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+
+    @app.post("/forum/{post_id}/comments")
+    async def forum_comment(post_id: int, request: Request, db: Session = Depends(get_db)):
+        return await simple_post(request, db, f"/forum/{post_id}", lambda actor, roles, form: forum.add_comment(db, actor, roles, post_id, str(form.get("body") or ""), form.get("anonymous") == "1"), "评论已发布")
+
+    @app.post("/forum/{post_id}/comments/{comment_id}/delete")
+    async def forum_comment_delete(post_id: int, comment_id: int, request: Request, db: Session = Depends(get_db)):
+        return await simple_post(request, db, f"/forum/{post_id}", lambda actor, roles, _form: forum.delete_comment(db, actor, roles, post_id, comment_id), "评论已删除")
 
     @app.post("/forum/{post_id}/delete")
     async def forum_delete(post_id: int, request: Request, db: Session = Depends(get_db)):
-        return await simple_post(request, db, "/forum", lambda actor, roles, _form: svc.delete_post(db, actor, roles, post_id), "帖子已删除")
+        return await simple_post(request, db, "/forum", lambda actor, roles, _form: forum.delete_post(db, actor, roles, post_id), "帖子已删除")
 
     @app.exception_handler(404)
     async def not_found(request: Request, _exc):

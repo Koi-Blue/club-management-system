@@ -17,6 +17,16 @@
         <h3>{{ item.amount }} 元 · {{ item.user }}</h3>
         <p>{{ item.reason }}</p>
         <p class="muted"><span class="badge badge-{{ item.status }}">{{ claim_status[item.status] }}</span> {{ item.comment }}</p>
+        {% if item.files %}
+        <div class="claim-files">
+          {% for file in item.files %}
+          {% if file.kind == 'qr' %}
+          <details><summary>收款二维码</summary><img class="payment-qr" src="/finance/claims/{{ item.id }}/files/{{ file.id }}" alt="收款二维码" loading="lazy">
+            <a href="/finance/claims/{{ item.id }}/files/{{ file.id }}?download=true">下载二维码</a></details>
+          {% else %}<p><a href="/finance/claims/{{ item.id }}/files/{{ file.id }}?download=true">发票：{{ file.original_name }}</a></p>{% endif %}
+          {% endfor %}
+        </div>
+        {% else %}<p class="muted">历史报销：未上传附件</p>{% endif %}
         {% if finance and item.status == 'pending' %}
         <form class="actions" method="post" action="/finance/claims/{{ item.id }}/review">
           <input type="hidden" name="csrf" value="{{ csrf }}"><input name="comment" placeholder="意见">
@@ -32,11 +42,14 @@
     </div>
     {% else %}<p class="empty">还没有报销。</p>{% endif %}
     <hr class="sep">
-    <form class="stack" method="post" action="/finance/claims">
+    <form class="stack" method="post" action="/finance/claims" enctype="multipart/form-data">
       <h2>提交报销</h2>
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label class="field"><span>金额（元）</span><input name="amount" inputmode="decimal" required></label>
-      <label class="field"><span>事由</span><input name="reason" required></label>
+      <label class="field"><span>事由</span><input name="reason" maxlength="200" required></label>
+      <label class="field"><span>发票（1～10 份，PDF/JPG/PNG）</span><input type="file" name="invoices" accept=".pdf,.jpg,.jpeg,.png" multiple required></label>
+      <label class="field"><span>收款二维码（一张 JPG/PNG）</span><input type="file" name="qr" accept=".jpg,.jpeg,.png" required></label>
+      <p class="muted">单个文件不超过 20MB，合计不超过 50MB。仅本人及财务审批人员可查看。</p>
       <button class="primary" type="submit">提交</button>
     </form>
   </article>

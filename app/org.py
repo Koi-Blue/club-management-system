@@ -7,35 +7,27 @@ TECH_LEADS = [
 ]
 MINISTERS = [f"{dept}部长" for dept in DEPARTMENTS]
 DEPT_MEMBERS = [f"{dept}成员" for dept in DEPARTMENTS]
-OFFICERS = ["指导老师", "社长", "副社长", "荣誉社长"]
-CLUB_ROLES = OFFICERS + MINISTERS + TECH_LEADS + DEPT_MEMBERS
-
-# 指导老师在最上，其下是社长、副社长和各部门。荣誉社长单独成支，方便在架构里看到。
-ORG_TREE = [
-    (
-        "指导老师",
-        [
-            (
-                "社长",
-                [
-                    (
-                        "副社长",
-                        [
-                            (
-                                "技术部部长",
-                                [(lead, []) for lead in TECH_LEADS] + [("技术部成员", [])],
-                            ),
-                            ("财务部部长", [("财务部成员", [])]),
-                            ("人事部部长", [("人事部成员", [])]),
-                            ("宣传部部长", [("宣传部成员", [])]),
-                        ],
-                    )
-                ],
-            )
-        ],
-    ),
-    ("荣誉社长", []),
+TECH_DIRECTIONS = [
+    ("嵌入式软件", "技术部嵌入式软件负责人"),
+    ("算法", "技术部算法负责人"),
+    ("硬件", "技术部硬件负责人"),
+    ("机械", "技术部机械负责人"),
 ]
+TECH_MEMBERS = [f"技术部{name}成员" for name, _ in TECH_DIRECTIONS]
+OFFICERS = ["指导老师", "社长", "副社长", "荣誉社长"]
+CLUB_ROLES = OFFICERS + MINISTERS + TECH_LEADS + DEPT_MEMBERS + TECH_MEMBERS
+
+# 指导老师与荣誉社长独立展示，不参与上下级关系。
+ORG_TREE = [
+    ("社长", [("副社长", [
+        ("技术部部长", [(lead, [(f"技术部{name}成员", [])]) for name, lead in TECH_DIRECTIONS]
+         + [("技术部成员", [])]),
+        ("财务部部长", [("财务部成员", [])]),
+        ("人事部部长", [("人事部成员", [])]),
+        ("宣传部部长", [("宣传部成员", [])]),
+    ])]),
+]
+ORG_INDEPENDENT = [("指导老师", []), ("荣誉社长", [])]
 
 
 def role_department(role: str) -> str:
@@ -84,7 +76,7 @@ def can_issue_activity(is_admin: bool, roles: list[str]) -> bool:
 
 
 def can_create_activity(is_admin: bool, roles: list[str]) -> bool:
-    return can_issue_activity(is_admin, roles) or bool(managed_departments(roles))
+    return can_issue_activity(is_admin, roles) or "荣誉社长" in roles or bool(managed_departments(roles))
 
 
 def can_approve_borrow(is_admin: bool, roles: list[str]) -> bool:
@@ -97,14 +89,6 @@ def can_edit_duty(is_admin: bool, roles: list[str]) -> bool:
 
 def can_announce(is_admin: bool, roles: list[str]) -> bool:
     return is_admin or has_role(roles, "荣誉社长", "社长", "副社长", "指导老师") or bool(managed_departments(roles))
-
-
-TECH_DIRECTIONS = [
-    ("嵌入式软件", "技术部嵌入式软件负责人"),
-    ("算法", "技术部算法负责人"),
-    ("硬件", "技术部硬件负责人"),
-    ("机械", "技术部机械负责人"),
-]
 
 
 def can_see_member_phone(viewer_is_admin: bool, viewer_roles: list[str], target_roles: list[str], same_person: bool) -> bool:

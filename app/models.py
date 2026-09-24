@@ -214,6 +214,16 @@ class Reimbursement(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
 
 
+class ReimbursementFile(Base):
+    __tablename__ = "reimbursement_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reimbursement_id: Mapped[int] = mapped_column(ForeignKey("reimbursements.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    stored_name: Mapped[str] = mapped_column(String(80))
+    original_name: Mapped[str] = mapped_column(String(180))
+    size: Mapped[int] = mapped_column(Integer)
+
+
 class LeaveRequest(Base):
     __tablename__ = "leave_requests"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -246,6 +256,16 @@ class ForumPost(Base):
     scope: Mapped[str] = mapped_column(String(20), index=True)
     department: Mapped[str] = mapped_column(String(40), default="")
     direction: Mapped[str] = mapped_column(String(20), default="")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class ForumComment(Base):
+    __tablename__ = "forum_comments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey("forum_posts.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    body: Mapped[str] = mapped_column(Text)
+    anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
 
 

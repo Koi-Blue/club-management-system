@@ -15,6 +15,7 @@
     <article class="item">
       <strong>{{ person.real_name }}</strong>
       <p class="muted">@{{ person.username }} · {{ person.college }} {{ person.class_name }} · {{ person.phone }} · {{ person.department }}</p>
+      <p class="muted">{% for role in person.roles %}申请方向：{{ role }} {% endfor %}</p>
       <div class="actions">
         <form method="post" action="/members/{{ person.id }}/approve"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary" type="submit">通过</button></form>
         <form method="post" action="/members/{{ person.id }}/reject"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger" type="submit">驳回</button></form>
@@ -25,7 +26,7 @@
   {% else %}<p class="empty">没有待审批账号。</p>{% endif %}
 </section>
 <section class="card" style="margin-bottom:1rem">
-  <h2>在册成员</h2>
+  <h2>在册成员</h2><p class="muted">技术方向成员不具有负责人权限，可多选；分配方向后自动取消“技术部成员”的待分配状态。论坛和组织架构随当前职务更新。</p>
   {% if active %}
   <div class="list">
     {% for person in active %}
@@ -41,7 +42,7 @@
           {% for role in roles %}<label><input type="checkbox" name="roles" value="{{ role }}" {% if role in person.roles %}checked{% endif %}>{{ role }}</label>{% endfor %}
         </div>
         {% endfor %}
-        <div class="actions"><button class="secondary" type="submit">保存职务</button></div>
+        <div class="actions"><button class="secondary" type="submit">保存职务与方向</button></div>
       </form>
       <div class="actions">
         <form method="post" action="/members/{{ person.id }}/disable"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">停用</button></form>

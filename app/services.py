@@ -14,7 +14,6 @@ from app.models import (
     Borrow,
     CheckIn,
     DutyShift,
-    ForumPost,
     Journal,
     LeaveRequest,
     LedgerEntry,
@@ -34,6 +33,7 @@ from app.org import (
     CLUB_ROLES,
     DEPARTMENTS,
     TECH_DIRECTIONS,
+    TECH_MEMBERS,
     can_announce,
     can_approve_borrow,
     can_approve_project,
@@ -104,7 +104,7 @@ def parse_cents(raw: str) -> int:
         amount = Decimal(text)
     except InvalidOperation as exc:
         raise AppError("金额格式不正确") from exc
-    if amount <= 0 or amount > Decimal("10000000"):
+    if not amount.is_finite() or amount <= 0 or amount > Decimal("10000000"):
         raise AppError("金额需要大于 0")
     quantized = amount.quantize(Decimal("0.01"))
     if quantized != amount:
@@ -243,7 +243,7 @@ def visible_library_departments(user: User, roles: list[str]) -> list[str]:
     return [dept for dept in DEPARTMENTS if dept in found]
 
 
-def register_user(db: Session, username: str, password: str, real_name: str, phone: str, college: str, class_name: str, department: str) -> None:
+def register_user(db: Session, username: str, password: str, real_name: str, phone: str, college: str, class_name: str, department: str, direction: str = "") -> None:
     username = username.strip()
     phone = phone.strip()
     if not USERNAME_RE.match(username):
@@ -258,19 +258,23 @@ def register_user(db: Session, username: str, password: str, real_name: str, pho
         raise AppError("这个用户名已经注册")
     if db.scalar(select(User).where(User.phone == phone)):
         raise AppError("这个手机号已经注册")
-    db.add(
-        User(
-            username=username,
-            password_hash=hash_password(password),
-            real_name=require_text(real_name, "姓名", 40),
-            phone=phone,
-            college=require_text(college, "学院", 40),
-            class_name=require_text(class_name, "班级", 40),
-            department=department,
-            status="pending",
-            is_admin=False,
-        )
+    if direction and (department != "技术部" or direction not in dict(TECH_DIRECTIONS)):
+        raise AppError("请选择有效的技术方向")
+    user = User(
+        username=username,
+        password_hash=hash_password(password),
+        real_name=require_text(real_name, "姓名", 40),
+        phone=phone,
+        college=require_text(college, "学院", 40),
+        class_name=require_text(class_name, "班级", 40),
+        department=department,
+        status="pending",
+        is_admin=False,
     )
+    db.add(user)
+    if direction:
+        db.flush()
+        db.add(UserRole(user_id=user.id, role=f"技术部{direction}成员"))
     db.commit()
 
 
@@ -348,6 +352,8 @@ def set_roles(db: Session, actor: User, user_id: int, selected: list[str]) -> No
             final.append(role)
     if not final:
         raise AppError("至少保留一个职务")
+    if any(role in TECH_MEMBERS for role in final) and "技术部成员" in final:
+        final.remove("技术部成员")
     db.execute(delete(UserRole).where(UserRole.user_id == user.id))
     db.flush()
     for role in final:
@@ -583,7 +589,7 @@ def create_activity(db: Session, user: User, roles: list[str], title: str, descr
         raise AppError("没有权限创建活动")
     if department not in DEPARTMENTS and department != "全社":
         raise AppError("请选择活动范围")
-    if department != "全社" and department not in managed_departments(roles) and not can_issue_activity(user.is_admin, roles) and not user.is_admin:
+    if department != "全社" and department not in managed_departments(roles) and not can_issue_activity(user.is_admin, roles) and "荣誉社长" not in roles and not user.is_admin:
         raise AppError("只能创建本部门或全社活动")
     start_at = parse_local_dt(start_raw, "开始时间")
     end_at = parse_local_dt(end_raw, "结束时间")
@@ -608,11 +614,15 @@ def create_activity(db: Session, user: User, roles: list[str], title: str, descr
     return activity
 
 
+def may_issue_activity(user: User, roles: list[str], activity: Activity) -> bool:
+    return can_issue_activity(user.is_admin, roles) or ("荣誉社长" in roles and activity.creator_id == user.id)
+
+
 def issue_activity(db: Session, user: User, roles: list[str], activity_id: int) -> str:
-    if not can_issue_activity(user.is_admin, roles):
-        raise AppError("没有权限发放活动")
     activity = db.get(Activity, activity_id)
-    if activity is None or activity.status not in {"draft", "rejected"}:
+    if activity is None or not may_issue_activity(user, roles, activity):
+        raise AppError("没有权限发放活动")
+    if activity.status not in {"draft", "rejected"}:
         raise AppError("当前状态不能发放")
     activity.status = "published"
     activity.issuer_id = user.id
@@ -777,11 +787,6 @@ def add_ledger(db: Session, user: User, roles: list[str], kind: str, amount: str
     db.commit()
 
 
-def request_reimbursement(db: Session, user: User, amount: str, reason: str) -> None:
-    db.add(Reimbursement(user_id=user.id, amount_cents=parse_cents(amount), reason=require_text(reason, "报销事由", 200), status="pending"))
-    db.commit()
-
-
 def review_reimbursement(db: Session, user: User, roles: list[str], item_id: int, decision: str, comment: str) -> None:
     if not sees_finance(user.is_admin, roles):
         raise AppError("没有权限审批报销")
@@ -867,7 +872,7 @@ def delete_duty(db: Session, user: User, roles: list[str], duty_id: int) -> None
     db.commit()
 
 
-def build_org_tree(db: Session, viewer: User, viewer_roles: list[str]) -> list[dict]:
+def build_org_tree(db: Session, viewer: User, viewer_roles: list[str]) -> dict:
     users = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.class_name, User.real_name)).all()
     grouped: dict[str, list[dict]] = {role: [] for role in CLUB_ROLES}
     role_cache = {user.id: roles_of(db, user.id) for user in users}
@@ -886,96 +891,16 @@ def build_org_tree(db: Session, viewer: User, viewer_roles: list[str]) -> list[d
 
     def walk(node: tuple) -> dict:
         title, children = node
-        return {"title": title, "people": grouped.get(title, []), "children": [walk(child) for child in children]}
+        return {"title": "技术部成员（待分配方向）" if title == "技术部成员" else title, "people": grouped.get(title, []), "children": [walk(child) for child in children]}
 
-    from app.org import ORG_TREE
-    return [walk(node) for node in ORG_TREE]
+    from app.org import ORG_TREE, ORG_INDEPENDENT
+    return {"tree": [walk(node) for node in ORG_TREE], "independent": [walk(node) for node in ORG_INDEPENDENT]}
 
 
 def project_member_names(db: Session, project_id: int) -> list[str]:
     ids = db.scalars(select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)).all()
     names = name_map(db, set(ids))
     return [names.get(item, "已注销") for item in ids]
-
-
-def in_tech(user: User, roles: list[str]) -> bool:
-    return user.department == "技术部" or any(role.startswith("技术部") for role in roles)
-
-
-def forum_choices(user: User, roles: list[str]) -> list[dict]:
-    choices = [{"value": "club", "label": "全社"}]
-    if in_tech(user, roles):
-        choices.insert(0, {"value": "tech", "label": "整个技术部"})
-        for name, _role in TECH_DIRECTIONS:
-            choices.insert(0, {"value": f"direction:{name}", "label": f"仅{name}"})
-    elif user.department in DEPARTMENTS:
-        choices.insert(0, {"value": "dept", "label": f"仅{user.department}"})
-    return choices
-
-
-def can_view_post(user: User, roles: list[str], post: ForumPost) -> bool:
-    if user.is_admin or post.author_id == user.id or post.scope == "club":
-        return True
-    if post.scope == "tech":
-        return in_tech(user, roles)
-    if post.scope == "dept":
-        return post.department in user_departments(user, roles)
-    if post.scope == "direction":
-        lead = dict(TECH_DIRECTIONS).get(post.direction, "")
-        return lead in roles or "技术部部长" in roles
-    return False
-
-
-def create_post(db: Session, user: User, roles: list[str], title: str, body: str, scope_value: str) -> ForumPost:
-    scope = scope_value
-    direction = ""
-    department = user.department if user.department in DEPARTMENTS else ""
-    allowed = {item["value"] for item in forum_choices(user, roles)}
-    if scope not in allowed:
-        raise AppError("不能选择这个查看范围")
-    if scope.startswith("direction:"):
-        direction = scope.split(":", 1)[1]
-        scope = "direction"
-        department = "技术部"
-    elif scope == "tech":
-        department = "技术部"
-    elif scope == "dept":
-        if department not in DEPARTMENTS:
-            raise AppError("请先有所属部门")
-    post = ForumPost(
-        author_id=user.id,
-        title=require_text(title, "标题", 80),
-        body=require_text(body, "正文", 8000),
-        scope=scope,
-        department=department,
-        direction=direction,
-    )
-    db.add(post)
-    db.commit()
-    db.refresh(post)
-    return post
-
-
-def delete_post(db: Session, user: User, roles: list[str], post_id: int) -> None:
-    post = db.get(ForumPost, post_id)
-    if post is None or not can_view_post(user, roles, post):
-        raise AppError("找不到这篇帖子")
-    if post.author_id != user.id and not user.is_admin:
-        raise AppError("没有权限删除")
-    db.delete(post)
-    db.commit()
-
-
-def scope_label(post: ForumPost) -> str:
-    if post.scope == "club":
-        return "全社"
-    if post.scope == "tech":
-        return "整个技术部"
-    if post.scope == "direction":
-        return f"仅{post.direction}"
-    if post.scope == "dept":
-        return f"仅{post.department}"
-    return post.scope
 
 
 def save_journal(db: Session, user: User, title: str, body: str, journal_id: int | None = None) -> Journal:
