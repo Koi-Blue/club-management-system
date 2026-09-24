@@ -100,17 +100,21 @@ def deploy(args):
             physical = config["volumes"]["club-data"]["name"]
             if physical in output("docker", "volume", "ls", "--format", "{{.Name}}").splitlines():
                 raise RuntimeError("首次部署的目标卷已存在，请先确认旧部署，不能使用 --init 覆盖或接管")
+        old_tag = None
+        if old:
+            # 构建会移走 club-management:latest。Buildx 记录的镜像摘要在构建后可能无法再 tag，
+            # 所以在构建前用容器当时的镜像名留下回滚标签。
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            old_tag = f"club-management:backup-{stamp.lower()}"
+            run("docker", "tag", old["Config"].get("Image") or old["Image"], old_tag)
         print("构建镜像，原服务继续运行……", flush=True)
         run(*base, "build", "club")
         if old:
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
             backup_dir = ROOT / "backups" / stamp
             backup_dir.mkdir(parents=True, mode=0o700)
             shutil.copyfile(ROOT / ".env", backup_dir / ".env")
             os.chmod(backup_dir / ".env", 0o600)
             shutil.copyfile(ROOT / "docker-compose.yml", backup_dir / "docker-compose.yml")
-            old_tag = f"club-management:backup-{stamp.lower()}"
-            run("docker", "tag", old["Image"], old_tag)
             (backup_dir / "deployment.json").write_text(json.dumps({
                 "project": project, "volume": volume, "image": old["Image"], "image_tag": old_tag,
                 "target_commit": output("git", "rev-parse", "HEAD"),
@@ -124,7 +128,7 @@ def deploy(args):
                 with partial.open("wb") as stream:
                     os.chmod(partial, 0o600)
                     run("docker", "run", "--rm", "--network", "none", "--volumes-from", f"{CONTAINER}:ro",
-                        old["Image"], "python", "-c", (ROOT / "scripts/backup_data.py").read_text(), stdout=stream)
+                        old_tag, "python", "-c", (ROOT / "scripts/backup_data.py").read_text(), stdout=stream)
                 partial.rename(backup_dir / "data.tar.gz")
                 print(f"备份完成：{backup_dir}", flush=True)
             replacement_started = True

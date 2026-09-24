@@ -103,6 +103,8 @@ def test_update_pins_actual_volume_backups_and_retains_env(deployment):
     deploy.deploy(argparse.Namespace(local=True, init=False))
     commands = state['commands']
     build = next(i for i, c in enumerate(commands) if 'build' in c)
+    tag = next(i for i, c in enumerate(commands) if c[:2] == ('docker', 'tag'))
+    assert tag < build and commands[tag][2] == 'sha256:old-image'
     stop = next(i for i, c in enumerate(commands) if c[:2] == ('docker', 'stop'))
     backup_at = next(i for i, c in enumerate(commands) if c[:2] == ('docker', 'run'))
     up = next(i for i, c in enumerate(commands) if 'up' in c)
