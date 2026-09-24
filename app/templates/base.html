@@ -33,6 +33,9 @@
         <a class="{% if nav == 'projects' %}active{% endif %}" href="/projects"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/></svg><span>立项</span></a>
         <a class="{% if nav == 'library' %}active{% endif %}" href="/library"><svg viewBox="0 0 24 24"><path d="M6 4h9a3 3 0 0 1 3 3v13H8a2 2 0 0 0-2 2zM6 4v16"/></svg><span>部门资料</span></a>
         <a class="{% if nav == 'meetings' %}active{% endif %}" href="/meetings"><svg viewBox="0 0 24 24"><path d="M7 4h10v16H7zM10 8h4M10 12h4M10 16h2"/></svg><span>会议纪要</span></a>
+        <p>交流</p>
+        <a class="{% if nav == 'journal' %}active{% endif %}" href="/journal"><svg viewBox="0 0 24 24"><path d="M6 4h10l4 4v12H6zM16 4v4h4M8 12h8M8 16h6"/></svg><span>日记</span></a>
+        <a class="{% if nav == 'forum' %}active{% endif %}" href="/forum"><svg viewBox="0 0 24 24"><path d="M5 6h14v9H8l-3 3z"/></svg><span>论坛</span></a>
         <p>物资</p>
         <a class="{% if nav == 'assets' %}active{% endif %}" href="/assets"><svg viewBox="0 0 24 24"><path d="M3 8l9-4 9 4-9 4zM3 8v8l9 4 9-4V8"/></svg><span>资产借用</span></a>
         <a class="{% if nav == 'finance' %}active{% endif %}" href="/finance"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg><span>{% if me.finance %}财务{% else %}报销{% endif %}</span></a>

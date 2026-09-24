@@ -11,6 +11,7 @@
   <article class="card">
     <h2>说明</h2>
     <p>{{ project.summary or "没有补充说明。" }}</p>
+    {% if project.members %}<p class="muted">关联成员：{{ project.members | join("、") }}</p>{% endif %}
     {% if project.review_comment %}<p class="muted">审批：{{ project.reviewer }} · {{ project.review_comment }}</p>{% endif %}
     <div class="actions">
       {% if project.can_submit %}<form method="post" action="/projects/{{ project.id }}/submit"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary" type="submit">提交审批</button></form>{% endif %}

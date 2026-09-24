@@ -2,12 +2,13 @@ import secrets
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.markdown import render_markdown
 from app.db import get_db
 from app.models import (
     Activity,
@@ -16,6 +17,8 @@ from app.models import (
     Borrow,
     CheckIn,
     DutyShift,
+    ForumPost,
+    Journal,
     LeaveRequest,
     LedgerEntry,
     LibraryFile,
@@ -39,9 +42,10 @@ from app.org import (
     can_create_activity,
     can_edit_duty,
     can_issue_activity,
+    sees_all_projects,
     sees_finance,
 )
-from app.security import verify_password
+from app.security import captcha_matches, issue_token, new_captcha, read_user_id, sign_captcha, verify_password
 from app.services import AppError
 import app.services as svc
 
@@ -88,14 +92,25 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         return bool(expected and given and secrets.compare_digest(expected, given))
 
     def active_user(request: Request, db: Session) -> User | None:
-        uid = request.session.get("uid")
-        if not uid:
+        uid = read_user_id(settings.secret_key, request.cookies.get("club_jwt"))
+        if uid is None:
             return None
         user = db.get(User, uid)
         if user is None or user.status != "active":
-            request.session.clear()
             return None
         return user
+
+    def captcha_ok(request: Request, form) -> bool:
+        if settings.captcha_disabled:
+            return True
+        return captcha_matches(settings.secret_key, request.cookies.get("captcha"), str(form.get("captcha") or ""))
+
+    def login_response(request: Request, user: User):
+        request.session.clear()
+        request.session["csrf"] = secrets.token_hex(16)
+        response = redirect("/")
+        response.set_cookie("club_jwt", issue_token(settings.secret_key, user.id), httponly=True, samesite="lax", max_age=14 * 24 * 3600, path="/")
+        return response
 
     def guard(request: Request, db: Session):
         user = active_user(request, db)
@@ -179,6 +194,14 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
     def healthz():
         return {"ok": True}
 
+    @app.get("/captcha.png")
+    def captcha_image():
+        code, png = new_captcha()
+        response = Response(content=png, media_type="image/png")
+        response.set_cookie("captcha", sign_captcha(settings.secret_key, code), httponly=True, samesite="lax", max_age=300, path="/")
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.get("/login")
     def login_page(request: Request, db: Session = Depends(get_db)):
         return auth_page(request, db, "login.html")
@@ -189,14 +212,14 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if not csrf_ok(request, str(form.get("csrf") or "")):
             flash(request, "页面已过期，请刷新后重试", "error")
             return redirect("/login")
+        if not captcha_ok(request, form):
+            flash(request, "验证码不正确或已过期", "error")
+            return redirect("/login")
         try:
             user = svc.authenticate(db, str(form.get("account") or ""), str(form.get("password") or ""))
         except AppError as exc:
             return fail(request, "/login", exc)
-        request.session.clear()
-        request.session["uid"] = user.id
-        request.session["csrf"] = secrets.token_hex(16)
-        return redirect("/")
+        return login_response(request, user)
 
     @app.get("/register")
     def register_page(request: Request, db: Session = Depends(get_db)):
@@ -208,6 +231,9 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if not csrf_ok(request, str(form.get("csrf") or "")):
             flash(request, "页面已过期，请刷新后重试", "error")
             return redirect("/register")
+        if not captcha_ok(request, form):
+            flash(request, "验证码不正确或已过期", "error")
+            return redirect("/register")
         try:
             svc.register_user(db, str(form.get("username") or ""), str(form.get("password") or ""), str(form.get("real_name") or ""), str(form.get("phone") or ""), str(form.get("college") or ""), str(form.get("class_name") or ""), str(form.get("department") or ""))
         except AppError as exc:
@@ -218,9 +244,11 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
     @app.post("/logout")
     async def logout(request: Request):
         form = await form_of(request)
+        response = redirect("/login")
         if csrf_ok(request, str(form.get("csrf") or "")):
             request.session.clear()
-        return redirect("/login")
+            response.delete_cookie("club_jwt", path="/")
+        return response
 
     @app.get("/")
     def dashboard(request: Request, db: Session = Depends(get_db)):
@@ -256,7 +284,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         user, bounce = guard(request, db)
         if bounce:
             return bounce
-        return render(request, "org.html", shell(request, db, user, "org", tree=svc.build_org_tree(db)))
+        return render(request, "org.html", shell(request, db, user, "org", tree=svc.build_org_tree(db, user, svc.roles_of(db, user.id))))
 
     @app.get("/members")
     def members_page(request: Request, db: Session = Depends(get_db)):
@@ -323,7 +351,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if bounce:
             return bounce
         roles = svc.roles_of(db, user.id)
-        rows = [row for row in db.scalars(select(Project).order_by(Project.updated_at.desc())).all() if svc.can_view_project(user, roles, row)]
+        rows = [row for row in db.scalars(select(Project).order_by(Project.updated_at.desc())).all() if svc.can_view_project(db, user, roles, row)]
         names = svc.name_map(db, {row.leader_id for row in rows})
         projects = [{"id": row.id, "title": row.title, "department": row.department, "status": row.status, "leader": names.get(row.leader_id, "已注销"), "updated_at": svc.fmt_dt(row.updated_at)} for row in rows]
         return render(request, "projects.html", shell(request, db, user, "projects", projects=projects))
@@ -334,8 +362,12 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if bounce:
             return bounce
         roles = svc.roles_of(db, user.id)
-        choices = svc.visible_library_departments(user, roles) or ([user.department] if user.department in DEPARTMENTS else DEPARTMENTS)
-        return render(request, "project_new.html", shell(request, db, user, "projects", choices=choices))
+        if "荣誉社长" in roles or user.is_admin:
+            choices = list(DEPARTMENTS)
+        else:
+            choices = svc.visible_library_departments(user, roles) or ([user.department] if user.department in DEPARTMENTS else [])
+        people = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.real_name)).all()
+        return render(request, "project_new.html", shell(request, db, user, "projects", choices=choices, people=[{"id": row.id, "real_name": row.real_name, "class_name": row.class_name, "checked": row.id == user.id} for row in people]))
 
     @app.post("/projects")
     async def project_create(request: Request, db: Session = Depends(get_db)):
@@ -347,9 +379,12 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             flash(request, "页面已过期，请刷新后重试", "error")
             return redirect("/projects/new")
         try:
-            project = svc.create_project(db, user, svc.roles_of(db, user.id), str(form.get("title") or ""), str(form.get("summary") or ""), str(form.get("department") or ""))
+            member_ids = [int(item) for item in form.getlist("members")]
+            project = svc.create_project(db, user, svc.roles_of(db, user.id), str(form.get("title") or ""), str(form.get("summary") or ""), str(form.get("department") or ""), member_ids)
         except AppError as exc:
             return fail(request, "/projects/new", exc)
+        except ValueError:
+            return fail(request, "/projects/new", AppError("关联成员不正确"))
         flash(request, "立项草稿已保存，确认后可以提交审批")
         return redirect(f"/projects/{project.id}")
 
@@ -360,8 +395,9 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return bounce
         project = db.get(Project, project_id)
         roles = svc.roles_of(db, user.id)
-        if project is None or not svc.can_view_project(user, roles, project):
-            flash(request, "找不到这个立项，或你没有查看权限", "error")
+        if project is None or not svc.can_view_project(db, user, roles, project):
+            if "flash" not in request.session:
+                flash(request, "找不到这个立项，或你没有查看权限", "error")
             return redirect("/projects")
         files = db.scalars(select(ProjectFile).where(ProjectFile.project_id == project.id).order_by(ProjectFile.uploaded_at.desc())).all()
         names = svc.name_map(db, {project.leader_id, project.reviewer_id or 0, *(row.uploader_id for row in files)})
@@ -369,11 +405,12 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             "id": project.id, "title": project.title, "summary": project.summary, "department": project.department,
             "status": project.status, "leader": names.get(project.leader_id, "已注销"), "reviewer": names.get(project.reviewer_id or 0, ""),
             "review_comment": project.review_comment, "updated_at": svc.fmt_dt(project.updated_at),
-            "can_submit": svc.can_manage_project(user, roles, project),
+            "can_submit": svc.can_manage_project(db, user, roles, project),
             "can_review": can_approve_project(user.is_admin, roles) and project.status == "pending",
-            "can_archive": project.status == "approved" and (project.leader_id == user.id or can_approve_project(user.is_admin, roles) or project.department in svc.managed_departments(roles)),
-            "can_upload": project.leader_id == user.id or user.is_admin or project.department in svc.managed_departments(roles) or can_approve_project(user.is_admin, roles),
-            "files": [{"id": row.id, "name": row.original_name, "uploader": names.get(row.uploader_id, "已注销"), "uploaded_at": svc.fmt_dt(row.uploaded_at), "size": row.size, "can_delete": row.uploader_id == user.id or user.is_admin or project.department in svc.managed_departments(roles)} for row in files],
+            "can_archive": project.status == "approved" and (svc.project_related(db, user, project) or can_approve_project(user.is_admin, roles)),
+            "can_upload": svc.project_related(db, user, project) or sees_all_projects(roles),
+            "members": svc.project_member_names(db, project.id),
+            "files": [{"id": row.id, "name": row.original_name, "uploader": names.get(row.uploader_id, "已注销"), "uploaded_at": svc.fmt_dt(row.uploaded_at), "size": row.size, "can_delete": row.uploader_id == user.id or user.is_admin or sees_all_projects(roles)} for row in files],
         }
         return render(request, "project_detail.html", shell(request, db, user, "projects", project=detail))
 
@@ -426,7 +463,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         project = db.get(Project, project_id)
         row = db.get(ProjectFile, file_id)
         roles = svc.roles_of(db, user.id)
-        if project is None or row is None or row.project_id != project.id or not svc.can_view_project(user, roles, project):
+        if project is None or row is None or row.project_id != project.id or not svc.can_view_project(db, user, roles, project):
             flash(request, "找不到这个文件", "error")
             return redirect("/projects")
         path = svc.safe_path(settings.upload_dir, ["projects", str(project_id), row.stored_name])
@@ -878,6 +915,98 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return fail(request, "/profile", exc)
         flash(request, "社团名称已更新")
         return redirect("/profile")
+
+    @app.get("/journal")
+    def journal_page(request: Request, db: Session = Depends(get_db)):
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        rows = db.scalars(select(Journal).where(Journal.user_id == user.id).order_by(Journal.updated_at.desc())).all()
+        items = [{"id": row.id, "title": row.title, "updated_at": svc.fmt_dt(row.updated_at)} for row in rows]
+        return render(request, "journal.html", shell(request, db, user, "journal", items=items))
+
+    @app.get("/journal/new")
+    def journal_new(request: Request, db: Session = Depends(get_db)):
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        return render(request, "journal_edit.html", shell(request, db, user, "journal", entry={"id": "", "title": "", "body": ""}))
+
+    @app.get("/journal/{item_id}")
+    def journal_detail(item_id: int, request: Request, db: Session = Depends(get_db)):
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        row = db.get(Journal, item_id)
+        if row is None or row.user_id != user.id:
+            flash(request, "找不到这篇日记", "error")
+            return redirect("/journal")
+        return render(request, "journal_detail.html", shell(request, db, user, "journal", entry={"id": row.id, "title": row.title, "html": render_markdown(row.body), "updated_at": svc.fmt_dt(row.updated_at)}))
+
+    @app.get("/journal/{item_id}/edit")
+    def journal_edit(item_id: int, request: Request, db: Session = Depends(get_db)):
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        row = db.get(Journal, item_id)
+        if row is None or row.user_id != user.id:
+            flash(request, "找不到这篇日记", "error")
+            return redirect("/journal")
+        return render(request, "journal_edit.html", shell(request, db, user, "journal", entry={"id": row.id, "title": row.title, "body": row.body}))
+
+    @app.post("/journal")
+    async def journal_create(request: Request, db: Session = Depends(get_db)):
+        form = await form_of(request)
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        if not csrf_ok(request, str(form.get("csrf") or "")):
+            flash(request, "页面已过期，请刷新后重试", "error")
+            return redirect("/journal")
+        raw_id = str(form.get("item_id") or "").strip()
+        try:
+            saved = svc.save_journal(db, user, str(form.get("title") or ""), str(form.get("body") or ""), int(raw_id) if raw_id else None)
+        except AppError as exc:
+            return fail(request, "/journal", exc)
+        flash(request, "日记已保存")
+        return redirect(f"/journal/{saved.id}")
+
+    @app.post("/journal/{item_id}/delete")
+    async def journal_delete(item_id: int, request: Request, db: Session = Depends(get_db)):
+        return await simple_post(request, db, "/journal", lambda actor, _roles, _form: svc.delete_journal(db, actor, item_id), "日记已删除")
+
+    @app.get("/forum")
+    def forum_page(request: Request, db: Session = Depends(get_db)):
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        roles = svc.roles_of(db, user.id)
+        rows = [row for row in db.scalars(select(ForumPost).order_by(ForumPost.created_at.desc())).all() if svc.can_view_post(user, roles, row)]
+        names = svc.name_map(db, {row.author_id for row in rows})
+        items = [{"id": row.id, "title": row.title, "author": names.get(row.author_id, "已注销"), "scope": svc.scope_label(row), "created_at": svc.fmt_dt(row.created_at)} for row in rows]
+        return render(request, "forum.html", shell(request, db, user, "forum", items=items, choices=svc.forum_choices(user, roles)))
+
+    @app.post("/forum")
+    async def forum_create(request: Request, db: Session = Depends(get_db)):
+        return await simple_post(request, db, "/forum", lambda actor, roles, form: svc.create_post(db, actor, roles, str(form.get("title") or ""), str(form.get("body") or ""), str(form.get("scope") or "")), "帖子已发布")
+
+    @app.get("/forum/{post_id}")
+    def forum_detail(post_id: int, request: Request, db: Session = Depends(get_db)):
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        post = db.get(ForumPost, post_id)
+        roles = svc.roles_of(db, user.id)
+        if post is None or not svc.can_view_post(user, roles, post):
+            flash(request, "找不到这篇帖子，或不在你的查看范围内", "error")
+            return redirect("/forum")
+        names = svc.name_map(db, {post.author_id})
+        detail = {"id": post.id, "title": post.title, "html": render_markdown(post.body), "author": names.get(post.author_id, "已注销"), "scope": svc.scope_label(post), "created_at": svc.fmt_dt(post.created_at), "can_delete": post.author_id == user.id or user.is_admin}
+        return render(request, "forum_detail.html", shell(request, db, user, "forum", post=detail))
+
+    @app.post("/forum/{post_id}/delete")
+    async def forum_delete(post_id: int, request: Request, db: Session = Depends(get_db)):
+        return await simple_post(request, db, "/forum", lambda actor, roles, _form: svc.delete_post(db, actor, roles, post_id), "帖子已删除")
 
     @app.exception_handler(404)
     async def not_found(request: Request, _exc):

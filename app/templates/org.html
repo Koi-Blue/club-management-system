@@ -4,7 +4,7 @@
 <header class="page-head">
   <div>
     <h1>组织架构</h1>
-    <p>点开职务即可展开。兼任会在每个职务下各出现一次。</p>
+    <p>点开姓名查看班级和电话。兼任会在每个职务下各出现一次。</p>
   </div>
 </header>
 <section class="card tree">
@@ -14,12 +14,14 @@
     {% if node.people %}
     <div class="people">
       {% for person in node.people %}
-      <div class="person-line">
-        <strong>{{ person.class_name or "未填班级" }}</strong>
-        <span>{{ person.real_name }}</span>
-        {% if person.phone %}<a href="tel:{{ person.phone }}">{{ person.phone }}</a>{% endif %}
-        <em>{{ person.college }}</em>
-      </div>
+      <details class="person">
+        <summary>{{ person.real_name }}</summary>
+        <div class="person-meta">
+          <span>{{ person.class_name or "未填班级" }}</span>
+          <span>{{ person.college }}</span>
+          {% if person.phone %}<a href="tel:{{ person.phone }}">{{ person.phone }}</a>{% else %}<span>电话不公开</span>{% endif %}
+        </div>
+      </details>
       {% endfor %}
     </div>
     {% else %}<p class="empty">这个职务还没有人。</p>{% endif %}

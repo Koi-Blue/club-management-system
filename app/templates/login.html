@@ -21,6 +21,7 @@
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="field"><span>用户名或手机号</span><input name="account" autocomplete="username" required></label>
         <label class="field"><span>密码</span><input name="password" type="password" autocomplete="current-password" required></label>
+        <label class="field captcha-field"><span>验证码</span><input name="captcha" inputmode="numeric" autocomplete="off" required maxlength="4"><img src="/captcha.png" alt="验证码" width="128" height="42"></label>
         <button class="primary" type="submit">进入</button>
         <p class="muted">还没有账号？<a href="/register">注册</a></p>
       </form>

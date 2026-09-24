@@ -68,11 +68,16 @@ def test_permissions_org_finance_and_archive():
     assert "软工2201" in org.text and "林夏" in org.text and "13800000001" in org.text
     assert "技术部嵌入式软件负责人" in org.text
 
-    created = tech.post("/projects", data={"csrf": csrf(tech.get("/projects/new").text), "title": "巡线车", "summary": "嵌入式", "department": "技术部"}, follow_redirects=True)
+    new_page = tech.get("/projects/new")
+    missing = tech.post("/projects", data={"csrf": csrf(new_page.text), "title": "未关联", "summary": "", "department": "技术部"}, follow_redirects=True)
+    assert "请勾选关联成员" in missing.text
+    member_id = re.search(r'name="members" value="(\d+)"', new_page.text).group(1)
+    created = tech.post("/projects", data={"csrf": csrf(new_page.text), "title": "巡线车", "summary": "嵌入式", "department": "技术部", "members": member_id}, follow_redirects=True)
     assert "草稿" in created.text
     project_path = created.url.path
     submitted = tech.post(project_path + "/submit", data={"csrf": csrf(tech.get(project_path).text)}, follow_redirects=True)
     assert "已提交审批" in submitted.text
+    assert "巡线车" not in admin.get("/projects").text
 
     promo_guest = TestClient(app)
     register(promo_guest, username="zhou", real_name="周宁", phone="13800000002", department="宣传部", class_name="新闻2202")
@@ -82,6 +87,8 @@ def test_permissions_org_finance_and_archive():
     promo = TestClient(app)
     login(promo, "zhou", "secret12")
     assert "巡线车" not in promo.get("/projects").text
+    zhou_org = promo.get("/org")
+    assert "林夏" in zhou_org.text and "13800000001" not in zhou_org.text
     assert "没有权限登记财务" in promo.post("/finance/ledger", data={"csrf": csrf(promo.get("/finance").text), "kind": "income", "amount": "10", "category": "社费", "note": "", "happened_on": "2026-09-23"}, follow_redirects=True).text
     assert "收支账" not in promo.get("/finance").text
 
@@ -97,10 +104,20 @@ def test_permissions_org_finance_and_archive():
     honor = TestClient(app)
     login(honor, "tang", "secret12")
     assert "巡线车" in honor.get("/projects").text
+    assert "13800000001" in honor.get("/org").text
     assert "收支账" not in honor.get("/finance").text
+    announced = honor.post("/announcements", data={"csrf": csrf(honor.get("/announcements").text), "title": "招新说明", "content": "本周见面"}, follow_redirects=True)
+    assert "公告已发布" in announced.text
+    blocked = admin.post(project_path + "/review", data={"csrf": csrf(admin.get("/").text), "decision": "approved", "comment": "超管不能批"}, follow_redirects=True)
+    assert "没有权限审批立项" in blocked.text
 
     admin.post(f"/members/{promo_id}/roles", data={"csrf": csrf(admin.get("/members").text), "roles": ["社长", "宣传部成员"]}, follow_redirects=True)
     finance = login(promo, "zhou", "secret12")
+    assert "巡线车" not in promo.get("/projects").text
+    president_review = promo.post(project_path + "/review", data={"csrf": csrf(finance.text), "decision": "approved", "comment": "社长不能批"}, follow_redirects=True)
+    assert "没有权限审批立项" in president_review.text
+    approved = honor.post(project_path + "/review", data={"csrf": csrf(honor.get(project_path).text), "decision": "approved", "comment": "同意立项"}, follow_redirects=True)
+    assert "审批已保存" in approved.text
     assert "收支账" in finance.text or "收支账" in promo.get("/finance").text
     recorded = promo.post("/finance/ledger", data={"csrf": csrf(promo.get("/finance").text), "kind": "income", "amount": "20.50", "category": "社费", "note": "学期", "happened_on": "2026-09-23"}, follow_redirects=True)
     assert "收支已登记" in recorded.text
@@ -122,12 +139,22 @@ def test_permissions_org_finance_and_archive():
     other = TestClient(app)
     login(other, "heqi", "secret12")
     assert "焊接培训" not in other.get("/activities").text
+    assert "焊接培训" not in honor.get("/activities").text
     issued = promo.post(activity_path + "/issue", data={"csrf": csrf(promo.get(activity_path).text)}, follow_redirects=True)
     assert "活动已发放" in issued.text
     code = re.search(r"签到码\s*(\d{6})", issued.text).group(1)
     public = other.get(activity_path)
     assert code not in public.text
     assert "报名成功" in other.post(activity_path + "/signup", data={"csrf": csrf(public.text)}, follow_redirects=True).text
+
+    journal = tech.post("/journal", data={"csrf": csrf(tech.get("/journal/new").text), "title": "实验记录", "body": "# 今天\n\n完成了**巡线**"}, follow_redirects=True)
+    assert "实验记录" in journal.text and "<h1>今天</h1>" in journal.text
+    assert "实验记录" not in promo.get("/journal").text
+    posted = tech.post("/forum", data={"csrf": csrf(tech.get("/forum").text), "title": "算法讨论", "body": "只给算法方向", "scope": "direction:算法"}, follow_redirects=True)
+    assert "帖子已发布" in posted.text
+    assert "算法讨论" in tech.get("/forum").text
+    assert "算法讨论" not in promo.get("/forum").text
+    assert "算法讨论" not in honor.get("/forum").text
 
     deleted = admin.post(f"/members/{user_id}/delete", data={"csrf": csrf(admin.get("/members").text)}, follow_redirects=True)
     assert "历史档案仍会保留" in deleted.text

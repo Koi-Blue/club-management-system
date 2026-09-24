@@ -14,12 +14,15 @@ from app.models import (
     Borrow,
     CheckIn,
     DutyShift,
+    ForumPost,
+    Journal,
     LeaveRequest,
     LedgerEntry,
     LibraryFile,
     Meeting,
     Project,
     ProjectFile,
+    ProjectMember,
     Reimbursement,
     Setting,
     Signup,
@@ -30,16 +33,19 @@ from app.models import (
 from app.org import (
     CLUB_ROLES,
     DEPARTMENTS,
+    TECH_DIRECTIONS,
     can_announce,
     can_approve_borrow,
     can_approve_project,
     can_create_activity,
     can_edit_duty,
     can_issue_activity,
+    can_see_member_phone,
     has_role,
     home_departments,
     managed_departments,
     sees_all_business,
+    sees_all_projects,
     sees_club_operations,
     sees_finance,
 )
@@ -174,22 +180,20 @@ def user_departments(user: User, roles: list[str]) -> set[str]:
     return home_departments(user.department, roles)
 
 
-def can_view_project(user: User, roles: list[str], project: Project) -> bool:
-    if sees_all_business(user.is_admin, roles) or project.leader_id == user.id:
+def project_related(db: Session, user: User, project: Project) -> bool:
+    if project.leader_id == user.id:
         return True
-    if project.department in managed_departments(roles):
-        return True
-    if sees_club_operations(user.is_admin, roles) and project.status != "draft":
-        return True
-    return project.department in user_departments(user, roles) and project.status in {"approved", "archived"}
+    return db.scalar(select(ProjectMember.id).where(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id)) is not None
 
 
-def can_manage_project(user: User, roles: list[str], project: Project) -> bool:
-    if user.is_admin:
-        return True
+def can_view_project(db: Session, user: User, roles: list[str], project: Project) -> bool:
+    return sees_all_projects(roles) or project_related(db, user, project)
+
+
+def can_manage_project(db: Session, user: User, roles: list[str], project: Project) -> bool:
     if project.status not in {"draft", "rejected"}:
         return False
-    return project.leader_id == user.id or project.department in managed_departments(roles)
+    return project_related(db, user, project)
 
 
 def can_view_activity(user: User, roles: list[str], activity: Activity) -> bool:
@@ -362,11 +366,21 @@ def change_password(db: Session, user: User, current: str, new_password: str, co
     db.commit()
 
 
-def create_project(db: Session, user: User, roles: list[str], title: str, summary: str, department: str) -> Project:
+def create_project(db: Session, user: User, roles: list[str], title: str, summary: str, department: str, member_ids: list[int]) -> Project:
     if department not in DEPARTMENTS:
         raise AppError("请选择部门")
-    if department not in user_departments(user, roles) and not sees_club_operations(user.is_admin, roles) and not user.is_admin:
+    if department not in user_departments(user, roles) and "荣誉社长" not in roles and not user.is_admin:
         raise AppError("只能在自己的部门立项")
+    selected = []
+    for raw in member_ids:
+        if raw in selected:
+            continue
+        member = db.get(User, raw)
+        if member is None or member.status != "active" or member.is_admin:
+            raise AppError("关联成员里有无效账号")
+        selected.append(raw)
+    if not selected:
+        raise AppError("请勾选关联成员")
     project = Project(
         title=require_text(title, "项目名称", 80),
         summary=optional_text(summary, "项目说明", 4000),
@@ -375,6 +389,9 @@ def create_project(db: Session, user: User, roles: list[str], title: str, summar
         leader_id=user.id,
     )
     db.add(project)
+    db.flush()
+    for member_id in selected:
+        db.add(ProjectMember(project_id=project.id, user_id=member_id))
     db.commit()
     db.refresh(project)
     return project
@@ -382,7 +399,7 @@ def create_project(db: Session, user: User, roles: list[str], title: str, summar
 
 def submit_project(db: Session, user: User, roles: list[str], project_id: int) -> None:
     project = db.get(Project, project_id)
-    if project is None or not can_manage_project(user, roles, project):
+    if project is None or not can_manage_project(db, user, roles, project):
         raise AppError("没有权限提交这个立项")
     project.status = "pending"
     project.updated_at = utcnow()
@@ -408,7 +425,7 @@ def archive_project(db: Session, user: User, roles: list[str], project_id: int) 
     project = db.get(Project, project_id)
     if project is None or project.status != "approved":
         raise AppError("只有进行中的立项可以归档")
-    if project.leader_id != user.id and not can_approve_project(user.is_admin, roles) and project.department not in managed_departments(roles):
+    if not project_related(db, user, project) and not can_approve_project(user.is_admin, roles):
         raise AppError("没有权限归档")
     project.status = "archived"
     project.updated_at = utcnow()
@@ -443,13 +460,10 @@ def safe_path(upload_dir: str, parts: list[str]) -> Path:
 
 def save_project_file(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int, filename: str, content: bytes) -> None:
     project = db.get(Project, project_id)
-    if project is None or not can_view_project(user, roles, project):
+    if project is None or not can_view_project(db, user, roles, project):
         raise AppError("找不到这个立项")
-    if not can_manage_project(user, roles, project) and project.status == "draft":
+    if not project_related(db, user, project) and not sees_all_projects(roles):
         raise AppError("没有权限上传资料")
-    if project.leader_id != user.id and project.department not in managed_departments(roles) and not user.is_admin and not can_approve_project(user.is_admin, roles):
-        if project.status == "draft":
-            raise AppError("没有权限上传资料")
     stored, original, size = _store_file(upload_dir, ["projects", str(project.id)], filename, content)
     db.add(ProjectFile(project_id=project.id, stored_name=stored, original_name=original, size=size, uploader_id=user.id))
     project.updated_at = utcnow()
@@ -459,9 +473,9 @@ def save_project_file(db: Session, user: User, roles: list[str], upload_dir: str
 def delete_project_file(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int, file_id: int) -> None:
     row = db.get(ProjectFile, file_id)
     project = db.get(Project, project_id)
-    if row is None or project is None or row.project_id != project.id or not can_view_project(user, roles, project):
+    if row is None or project is None or row.project_id != project.id or not can_view_project(db, user, roles, project):
         raise AppError("找不到这个文件")
-    if user.id != row.uploader_id and not user.is_admin and project.department not in managed_departments(roles):
+    if user.id != row.uploader_id and not user.is_admin and not sees_all_projects(roles):
         raise AppError("没有权限删除这个文件")
     path = safe_path(upload_dir, ["projects", str(project_id), row.stored_name])
     if path.exists():
@@ -853,18 +867,21 @@ def delete_duty(db: Session, user: User, roles: list[str], duty_id: int) -> None
     db.commit()
 
 
-def build_org_tree(db: Session) -> list[dict]:
+def build_org_tree(db: Session, viewer: User, viewer_roles: list[str]) -> list[dict]:
     users = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.class_name, User.real_name)).all()
     grouped: dict[str, list[dict]] = {role: [] for role in CLUB_ROLES}
+    role_cache = {user.id: roles_of(db, user.id) for user in users}
     for user in users:
+        target_roles = role_cache[user.id]
+        visible_phone = user.phone if can_see_member_phone(viewer.is_admin, viewer_roles, target_roles, viewer.id == user.id) else ""
         person = {
             "real_name": user.real_name,
             "class_name": user.class_name,
             "college": user.college,
-            "phone": user.phone,
+            "phone": visible_phone,
             "department": user.department,
         }
-        for role in roles_of(db, user.id):
+        for role in target_roles:
             grouped.setdefault(role, []).append(person)
 
     def walk(node: tuple) -> dict:
@@ -873,3 +890,113 @@ def build_org_tree(db: Session) -> list[dict]:
 
     from app.org import ORG_TREE
     return [walk(node) for node in ORG_TREE]
+
+
+def project_member_names(db: Session, project_id: int) -> list[str]:
+    ids = db.scalars(select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)).all()
+    names = name_map(db, set(ids))
+    return [names.get(item, "已注销") for item in ids]
+
+
+def in_tech(user: User, roles: list[str]) -> bool:
+    return user.department == "技术部" or any(role.startswith("技术部") for role in roles)
+
+
+def forum_choices(user: User, roles: list[str]) -> list[dict]:
+    choices = [{"value": "club", "label": "全社"}]
+    if in_tech(user, roles):
+        choices.insert(0, {"value": "tech", "label": "整个技术部"})
+        for name, _role in TECH_DIRECTIONS:
+            choices.insert(0, {"value": f"direction:{name}", "label": f"仅{name}"})
+    elif user.department in DEPARTMENTS:
+        choices.insert(0, {"value": "dept", "label": f"仅{user.department}"})
+    return choices
+
+
+def can_view_post(user: User, roles: list[str], post: ForumPost) -> bool:
+    if user.is_admin or post.author_id == user.id or post.scope == "club":
+        return True
+    if post.scope == "tech":
+        return in_tech(user, roles)
+    if post.scope == "dept":
+        return post.department in user_departments(user, roles)
+    if post.scope == "direction":
+        lead = dict(TECH_DIRECTIONS).get(post.direction, "")
+        return lead in roles or "技术部部长" in roles
+    return False
+
+
+def create_post(db: Session, user: User, roles: list[str], title: str, body: str, scope_value: str) -> ForumPost:
+    scope = scope_value
+    direction = ""
+    department = user.department if user.department in DEPARTMENTS else ""
+    allowed = {item["value"] for item in forum_choices(user, roles)}
+    if scope not in allowed:
+        raise AppError("不能选择这个查看范围")
+    if scope.startswith("direction:"):
+        direction = scope.split(":", 1)[1]
+        scope = "direction"
+        department = "技术部"
+    elif scope == "tech":
+        department = "技术部"
+    elif scope == "dept":
+        if department not in DEPARTMENTS:
+            raise AppError("请先有所属部门")
+    post = ForumPost(
+        author_id=user.id,
+        title=require_text(title, "标题", 80),
+        body=require_text(body, "正文", 8000),
+        scope=scope,
+        department=department,
+        direction=direction,
+    )
+    db.add(post)
+    db.commit()
+    db.refresh(post)
+    return post
+
+
+def delete_post(db: Session, user: User, roles: list[str], post_id: int) -> None:
+    post = db.get(ForumPost, post_id)
+    if post is None or not can_view_post(user, roles, post):
+        raise AppError("找不到这篇帖子")
+    if post.author_id != user.id and not user.is_admin:
+        raise AppError("没有权限删除")
+    db.delete(post)
+    db.commit()
+
+
+def scope_label(post: ForumPost) -> str:
+    if post.scope == "club":
+        return "全社"
+    if post.scope == "tech":
+        return "整个技术部"
+    if post.scope == "direction":
+        return f"仅{post.direction}"
+    if post.scope == "dept":
+        return f"仅{post.department}"
+    return post.scope
+
+
+def save_journal(db: Session, user: User, title: str, body: str, journal_id: int | None = None) -> Journal:
+    if journal_id:
+        row = db.get(Journal, journal_id)
+        if row is None or row.user_id != user.id:
+            raise AppError("找不到这篇日记")
+    else:
+        row = Journal(user_id=user.id, title="", body="")
+        db.add(row)
+    row.title = require_text(title, "标题", 80)
+    row.body = optional_text(body, "正文", 8000)
+    row.updated_at = utcnow()
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def delete_journal(db: Session, user: User, journal_id: int) -> None:
+    row = db.get(Journal, journal_id)
+    if row is None or row.user_id != user.id:
+        raise AppError("找不到这篇日记")
+    db.delete(row)
+    db.commit()

@@ -30,6 +30,7 @@
             {% for dept in ["技术部", "财务部", "人事部", "宣传部"] %}<option>{{ dept }}</option>{% endfor %}
           </select>
         </label>
+        <label class="field captcha-field"><span>验证码</span><input name="captcha" inputmode="numeric" autocomplete="off" required maxlength="4"><img src="/captcha.png" alt="验证码" width="128" height="42"></label>
         <button class="primary" type="submit">提交注册</button>
         <p class="muted">已有账号？<a href="/login">登录</a></p>
       </form>

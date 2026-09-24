@@ -60,7 +60,7 @@ def managed_departments(roles: list[str]) -> set[str]:
 
 
 def sees_all_business(is_admin: bool, roles: list[str]) -> bool:
-    return is_admin or "荣誉社长" in roles
+    return is_admin
 
 
 def sees_finance(is_admin: bool, roles: list[str]) -> bool:
@@ -68,11 +68,15 @@ def sees_finance(is_admin: bool, roles: list[str]) -> bool:
 
 
 def sees_club_operations(is_admin: bool, roles: list[str]) -> bool:
-    return is_admin or has_role(roles, "社长", "副社长", "指导老师", "荣誉社长")
+    return is_admin or has_role(roles, "社长", "副社长", "指导老师")
 
 
 def can_approve_project(is_admin: bool, roles: list[str]) -> bool:
-    return is_admin or has_role(roles, "社长", "副社长", "指导老师")
+    return "荣誉社长" in roles
+
+
+def sees_all_projects(roles: list[str]) -> bool:
+    return "荣誉社长" in roles
 
 
 def can_issue_activity(is_admin: bool, roles: list[str]) -> bool:
@@ -92,7 +96,26 @@ def can_edit_duty(is_admin: bool, roles: list[str]) -> bool:
 
 
 def can_announce(is_admin: bool, roles: list[str]) -> bool:
-    return is_admin or has_role(roles, "社长", "副社长", "指导老师") or bool(managed_departments(roles))
+    return is_admin or has_role(roles, "荣誉社长", "社长", "副社长", "指导老师") or bool(managed_departments(roles))
+
+
+TECH_DIRECTIONS = [
+    ("嵌入式软件", "技术部嵌入式软件负责人"),
+    ("算法", "技术部算法负责人"),
+    ("硬件", "技术部硬件负责人"),
+    ("机械", "技术部机械负责人"),
+]
+
+
+def can_see_member_phone(viewer_is_admin: bool, viewer_roles: list[str], target_roles: list[str], same_person: bool) -> bool:
+    if same_person:
+        return True
+    higher = set(OFFICERS + MINISTERS + TECH_LEADS)
+    if any(role in higher for role in target_roles):
+        return True
+    if viewer_is_admin or has_role(viewer_roles, "社长", "副社长", "指导老师", "荣誉社长"):
+        return True
+    return any(role.endswith("部长") for role in viewer_roles)
 
 
 def home_departments(user_department: str, roles: list[str]) -> set[str]:

@@ -9,3 +9,4 @@ os.environ["ADMIN_PASSWORD"] = "admin123"
 os.environ["DATABASE_URL"] = f"sqlite:///{_root / 'club.db'}"
 os.environ["UPLOAD_DIR"] = str(_root / "uploads")
 os.environ["CLUB_NAME"] = "青禾社"
+os.environ["CAPTCHA_DISABLED"] = "1"

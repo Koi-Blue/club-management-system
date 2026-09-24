@@ -10,6 +10,7 @@ class Settings:
     admin_username: str
     admin_password: str
     club_name: str
+    captcha_disabled: bool
 
 
 def load_settings() -> Settings:
@@ -28,4 +29,5 @@ def load_settings() -> Settings:
         admin_username=username,
         admin_password=password,
         club_name=club_name,
+        captcha_disabled=os.environ.get("CAPTCHA_DISABLED") == "1",
     )

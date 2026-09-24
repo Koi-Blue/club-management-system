@@ -83,6 +83,14 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
 
 
+class ProjectMember(Base):
+    __tablename__ = "project_members"
+    __table_args__ = (UniqueConstraint("project_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+
 class ProjectFile(Base):
     __tablename__ = "project_files"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -216,6 +224,28 @@ class LeaveRequest(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     review_comment: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class Journal(Base):
+    __tablename__ = "journals"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(80))
+    body: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class ForumPost(Base):
+    __tablename__ = "forum_posts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(80))
+    body: Mapped[str] = mapped_column(Text, default="")
+    scope: Mapped[str] = mapped_column(String(20), index=True)
+    department: Mapped[str] = mapped_column(String(40), default="")
+    direction: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
 
 

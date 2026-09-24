@@ -1,12 +1,18 @@
 {% extends "base.html" %}
 {% block title %}新建立项 · {{ club_name }}{% endblock %}
 {% block content %}
-<header class="page-head"><div><h1>新建立项</h1><p>先保存草稿，再提交审批。</p></div></header>
+<header class="page-head"><div><h1>新建立项</h1><p>必须勾选关联成员。荣誉社长和超级管理员可以跨部门立项，其他人只能在自己的部门立项。</p></div></header>
 <form class="card form-grid" method="post" action="/projects">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <label class="field"><span>部门</span><select name="department">{% for dept in choices %}<option>{{ dept }}</option>{% endfor %}</select></label>
   <label class="field"><span>项目名称</span><input name="title" required></label>
   <label class="field span-2"><span>说明</span><textarea name="summary"></textarea></label>
+  <div class="span-2">
+    <p class="group-label">关联成员</p>
+    <div class="roles">
+      {% for person in people %}<label><input type="checkbox" name="members" value="{{ person.id }}" {% if person.checked %}checked{% endif %}>{{ person.class_name }} {{ person.real_name }}</label>{% endfor %}
+    </div>
+  </div>
   <div class="actions span-2"><button class="primary" type="submit">保存草稿</button><a class="secondary" href="/projects">返回</a></div>
 </form>
 {% endblock %}
