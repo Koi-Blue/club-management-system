@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ club_name }}{% endblock %}</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css?v=20260926-nav1">
+  <script src="/static/navigation.js?v=20260926-nav1" defer></script>
+</head>
+<body>
+  <div class="layout" data-user-id="{{ me.id }}" data-shell-version="20260926-nav1">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">社</div>
+        <div>
+          <strong>{{ club_name }}</strong>
+          <small>运营与资料</small>
+        </div>
+      </div>
+      <nav class="nav" aria-label="模块导航">
+        <p>工作台</p>
+        <a class="{% if nav == 'home' %}active{% endif %}" href="/"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg><span>首页</span></a>
+        <a class="{% if nav == 'approvals' %}active{% endif %}" href="/approvals"><svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg><span>审批</span>{% if badges.approvals %}<em>{{ badges.approvals }}</em>{% endif %}</a>
+        <a class="{% if nav == 'announcements' %}active{% endif %}" href="/announcements"><svg viewBox="0 0 24 24"><path d="M4 10v4h3l6 4V6L7 10zM16 9a4 4 0 0 1 0 6"/></svg><span>公告</span></a>
+        <p>组织</p>
+        <a class="{% if nav == 'org' %}active{% endif %}" href="/org"><svg viewBox="0 0 24 24"><path d="M12 4v4M12 12v8M6 12H4m16 0h-2M8 20h8M7 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm10 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg><span>组织架构</span></a>
+        {% if me.is_admin %}<a class="{% if nav == 'members' %}active{% endif %}" href="/members"><svg viewBox="0 0 24 24"><path d="M16 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 8v6M17 11h6"/></svg><span>账号</span>{% if badges.members %}<em>{{ badges.members }}</em>{% endif %}</a>{% endif %}
+        <p>事务</p>
+        <a class="{% if nav == 'activities' %}active{% endif %}" href="/activities"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg><span>活动</span></a>
+        <a class="{% if nav == 'leave' %}active{% endif %}" href="/leave"><svg viewBox="0 0 24 24"><path d="M8 3h8M6 7h12v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zM9 12h6"/></svg><span>请假</span></a>
+        <a class="{% if nav == 'duty' %}active{% endif %}" href="/duty"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg><span>值班</span></a>
+        <p>资料</p>
+        <a class="{% if nav == 'projects' %}active{% endif %}" href="/projects"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/></svg><span>立项</span></a>
+        <a class="{% if nav == 'library' %}active{% endif %}" href="/library"><svg viewBox="0 0 24 24"><path d="M6 4h9a3 3 0 0 1 3 3v13H8a2 2 0 0 0-2 2zM6 4v16"/></svg><span>部门资料</span></a>
+        <a class="{% if nav == 'meetings' %}active{% endif %}" href="/meetings"><svg viewBox="0 0 24 24"><path d="M7 4h10v16H7zM10 8h4M10 12h4M10 16h2"/></svg><span>会议纪要</span></a>
+        <p>交流</p>
+        <a class="{% if nav == 'journal' %}active{% endif %}" href="/journal"><svg viewBox="0 0 24 24"><path d="M6 4h10l4 4v12H6zM16 4v4h4M8 12h8M8 16h6"/></svg><span>日记</span></a>
+        <a class="{% if nav == 'forum' %}active{% endif %}" href="/forum"><svg viewBox="0 0 24 24"><path d="M5 6h14v9H8l-3 3z"/></svg><span>论坛</span></a>
+        <p>物资</p>
+        <a class="{% if nav == 'assets' %}active{% endif %}" href="/assets"><svg viewBox="0 0 24 24"><path d="M3 8l9-4 9 4-9 4zM3 8v8l9 4 9-4V8"/></svg><span>资产借用</span></a>
+        <a class="{% if nav == 'finance' %}active{% endif %}" href="/finance"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg><span>{% if me.finance %}财务{% else %}报销{% endif %}</span></a>
+      </nav>
+      <div class="side-user">
+        <div>
+          <strong>{{ me.real_name }}</strong>
+          <small>{{ me.role_text }}</small>
+        </div>
+        <div class="side-links">
+          <a href="/profile" data-page-link>设置</a>
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="link-button" type="submit">退出</button>
+          </form>
+        </div>
+      </div>
+    </aside>
+    <div class="page-viewport">
+    <main class="main" tabindex="-1" data-module="{{ nav }}">
+      {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
+      {% if me.warn_password %}<div class="flash warn">还在用初始密码，请到设置里改掉。</div>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+    <div class="navigation-status" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+</body>
+</html>

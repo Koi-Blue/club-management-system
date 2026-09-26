@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · {{ club_name }}</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="auth-body">
+    <section class="auth-card">
+      <form class="card stack auth-form" method="post" action="/login">
+        <div class="auth-head">
+          <div class="brand-mark">社</div>
+          <p class="eyebrow">欢迎回来</p>
+          <h1>{{ club_name }}</h1>
+          <p class="muted">用用户名或手机号登录</p>
+        </div>
+        {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="field"><span>用户名或手机号</span><input name="account" autocomplete="username" required></label>
+        <label class="field"><span>密码</span><input name="password" type="password" autocomplete="current-password" required></label>
+        <label class="field captcha-field"><span>验证码</span><input name="captcha" inputmode="numeric" autocomplete="off" required maxlength="4"><img src="/captcha.png" alt="验证码" width="128" height="42"></label>
+        <button class="primary" type="submit">进入</button>
+        <p class="muted">还没有账号？<a href="/register">注册</a></p>
+      </form>
+    </section>
+  </div>
+</body>
+</html>

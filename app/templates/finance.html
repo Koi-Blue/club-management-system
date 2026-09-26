@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{% if finance %}财务{% else %}报销{% endif %} · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>{% if finance %}财务{% else %}我的报销{% endif %}</h1>
+    <p>{% if finance %}收支和全部报销只对超级管理员、社长、财务部部长可见。当前结余 {{ balance }} 元。{% else %}你只能看到自己的报销。提交后由财务部长或社长审批。{% endif %}</p>
+  </div>
+</header>
+<section class="grid two">
+  <article class="card">
+    <h2>{% if finance %}报销单{% else %}我的申请{% endif %}</h2>
+    {% if claims %}
+    <div class="list">
+      {% for item in claims %}
+      <article class="item">
+        <h3>{{ item.amount }} 元 · {{ item.user }}</h3>
+        <p>{{ item.reason }}</p>
+        <p class="muted"><span class="badge badge-{{ item.status }}">{{ claim_status[item.status] }}</span> {{ item.comment }}</p>
+        {% if item.files %}
+        <div class="claim-files">
+          {% for file in item.files %}
+          {% if file.kind == 'qr' %}
+          <details><summary>收款二维码</summary><img class="payment-qr" src="/finance/claims/{{ item.id }}/files/{{ file.id }}" alt="收款二维码" loading="lazy">
+            <a href="/finance/claims/{{ item.id }}/files/{{ file.id }}?download=true">下载二维码</a></details>
+          {% else %}<p><a href="/finance/claims/{{ item.id }}/files/{{ file.id }}?download=true">发票：{{ file.original_name }}</a></p>{% endif %}
+          {% endfor %}
+        </div>
+        {% else %}<p class="muted">历史报销：未上传附件</p>{% endif %}
+        {% if finance and item.status == 'pending' %}
+        <form class="actions" method="post" action="/finance/claims/{{ item.id }}/review">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input name="comment" placeholder="意见">
+          <button class="primary" name="decision" value="approved" type="submit">通过</button>
+          <button class="danger" name="decision" value="rejected" type="submit">驳回</button>
+        </form>
+        {% endif %}
+        {% if finance and item.status == 'approved' %}
+        <form method="post" action="/finance/claims/{{ item.id }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">登记已付款</button></form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有报销。</p>{% endif %}
+    <hr class="sep">
+    <form class="stack" method="post" action="/finance/claims" enctype="multipart/form-data">
+      <h2>提交报销</h2>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>金额（元）</span><input name="amount" inputmode="decimal" required></label>
+      <label class="field"><span>事由</span><input name="reason" maxlength="200" required></label>
+      <label class="field"><span>发票（1～10 份，PDF/JPG/PNG）</span><input type="file" name="invoices" accept=".pdf,.jpg,.jpeg,.png" multiple required></label>
+      <label class="field"><span>收款二维码（一张 JPG/PNG）</span><input type="file" name="qr" accept=".jpg,.jpeg,.png" required></label>
+      <p class="muted">单个文件不超过 20MB，合计不超过 50MB。仅本人及财务审批人员可查看。</p>
+      <button class="primary" type="submit">提交</button>
+    </form>
+  </article>
+  {% if finance %}
+  <article class="card">
+    <h2>收支账</h2>
+    {% if ledger %}
+    <table>
+      <thead><tr><th>日期</th><th>类型</th><th>金额</th><th>分类</th></tr></thead>
+      <tbody>{% for row in ledger %}<tr><td>{{ row.happened_on }}</td><td>{{ row.kind }}</td><td>{{ row.amount }}</td><td>{{ row.category }}<div class="muted">{{ row.note }} · {{ row.recorder }}</div></td></tr>{% endfor %}</tbody>
+    </table>
+    {% else %}<p class="empty">还没有收支记录。</p>{% endif %}
+    <hr class="sep">
+    <form class="form-grid" method="post" action="/finance/ledger">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>类型</span><select name="kind"><option value="income">收入</option><option value="expense">支出</option></select></label>
+      <label class="field"><span>金额</span><input name="amount" required></label>
+      <label class="field"><span>日期</span><input name="happened_on" type="date" required></label>
+      <label class="field"><span>分类</span><input name="category" value="社费"></label>
+      <label class="field span-2"><span>备注</span><input name="note"></label>
+      <div class="span-2"><button class="primary" type="submit">登记</button></div>
+    </form>
+  </article>
+  {% endif %}
+</section>
+{% endblock %}

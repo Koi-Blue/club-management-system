@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}活动 · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><h1>活动</h1><p>发放之后，全社成员都可以报名和签到。</p></div>
+  {% if me.can_create_activity %}<a data-page-link class="button" href="/activities/new">创建活动</a>{% endif %}
+</header>
+<section class="card">
+  {% if activities %}
+  <table>
+    <thead><tr><th>活动</th><th>范围</th><th>时间</th><th>报名</th><th>状态</th></tr></thead>
+    <tbody>
+      {% for item in activities %}
+      <tr>
+        <td><a data-page-link href="/activities/{{ item.id }}">{{ item.title }}</a><div class="muted">{{ item.location }} · {{ item.creator }}{% if item.signed %} · 已报名{% endif %}</div></td>
+        <td>{{ item.department }}</td>
+        <td>{{ item.start_at }}</td>
+        <td>{% if item.capacity %}{{ item.signup_count }} / {{ item.capacity }}{% else %}{{ item.signup_count }}{% endif %}</td>
+        <td><span class="badge badge-{{ item.status }}">{{ activity_status[item.status] }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">还没有你能查看的活动。</p>{% endif %}
+</section>
+{% endblock %}

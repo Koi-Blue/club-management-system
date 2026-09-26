@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}日记 · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><h1>日记</h1><p>只给你自己看，正文用 Markdown。</p></div>
+  <a data-page-link class="button" href="/journal/new">写一篇</a>
+</header>
+<section class="card">
+  {% if items %}
+  <div class="list">
+    {% for item in items %}
+    <a data-page-link class="item" href="/journal/{{ item.id }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.updated_at }}</p></a>
+    {% endfor %}
+  </div>
+  {% else %}<p class="empty">还没有日记。</p>{% endif %}
+</section>
+{% endblock %}

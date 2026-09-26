@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>注册 · {{ club_name }}</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="auth-body">
+    <section class="auth-card">
+      <form class="card stack auth-form" method="post" action="/register">
+        <div class="auth-head">
+          <div class="brand-mark">社</div>
+          <p class="eyebrow">注册加入</p>
+          <h1>{{ club_name }}</h1>
+          <p class="muted">通过后默认为所选部门成员</p>
+        </div>
+        {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="field"><span>姓名</span><input name="real_name" required></label>
+        <label class="field"><span>用户名</span><input name="username" autocomplete="username" required></label>
+        <label class="field"><span>手机号</span><input name="phone" inputmode="numeric" required></label>
+        <label class="field"><span>密码</span><input name="password" type="password" autocomplete="new-password" required></label>
+        <label class="field"><span>学院</span><input name="college" required></label>
+        <label class="field"><span>班级</span><input name="class_name" required></label>
+        <label class="field"><span>部门</span>
+          <select name="department" required>
+            {% for dept in ["技术部", "财务部", "人事部", "宣传部"] %}<option>{{ dept }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field"><span>技术方向（技术部可选）</span>
+          <select name="direction" id="register-direction">
+            <option value="">暂不分配</option>
+            {% for direction in tech_directions %}<option>{{ direction }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field captcha-field"><span>验证码</span><input name="captcha" inputmode="numeric" autocomplete="off" required maxlength="4"><img src="/captcha.png" alt="验证码" width="128" height="42"></label>
+        <button class="primary" type="submit">提交注册</button>
+        <p class="muted">已有账号？<a href="/login">登录</a></p>
+      </form>
+    </section>
+  </div>
+<script>
+    const department = document.querySelector('[name="department"]');
+    const direction = document.getElementById('register-direction');
+    function updateDirection() {
+      direction.disabled = department.value !== '技术部';
+      if (direction.disabled) direction.value = '';
+    }
+    department.addEventListener('change', updateDirection);
+    updateDirection();
+  </script>
+</body>
+</html>

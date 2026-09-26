@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ post.title }} · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><h1>{{ post.title }}</h1><p class="muted">{{ post.scope }} · {{ post.author }} · {{ post.created_at }}</p></div>
+</header>
+<article class="card prose">{{ post.html | safe }}</article>
+{% if post.can_delete %}
+<form method="post" action="/forum/{{ post.id }}/delete" style="margin-top:0.8rem">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button class="danger" type="submit">删除</button>
+</form>
+{% endif %}
+
+<section class="card comment-section">
+  <h2>评论 <span class="count">{{ comments|length }}</span></h2>
+  {% for comment in comments %}
+  <article class="item" id="comment-{{ comment.id }}">
+    <p><strong>{{ comment.author }}</strong>{% if comment.mine %} <span class="badge">我</span>{% endif %}<span class="muted"> · {{ comment.created_at }}</span></p>
+    {% if comment.audit_author %}<p class="muted">真实作者：{{ comment.audit_author }}（仅超级管理员可见）</p>{% endif %}
+    <div class="prose">{{ comment.html | safe }}</div>
+    {% if comment.can_delete %}<form method="post" action="/forum/{{ post.id }}/comments/{{ comment.id }}/delete">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button class="link-button" type="submit">删除评论</button>
+    </form>{% endif %}
+  </article>
+  {% else %}<p class="empty">还没有评论。</p>{% endfor %}
+  <form class="stack comment-section" method="post" action="/forum/{{ post.id }}/comments">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="field"><span>发表评论（Markdown）</span><textarea name="body" maxlength="8000" required></textarea></label>
+    <label class="checkbox-field"><input type="checkbox" name="anonymous" value="1">匿名评论</label>
+    <p class="muted">匿名时其他成员看不到你的身份，超级管理员可查看真实作者。</p>
+    <div><button class="primary" type="submit">发布评论</button></div>
+  </form>
+</section>
+{% endblock %}
