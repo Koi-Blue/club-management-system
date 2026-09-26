@@ -19,9 +19,10 @@
 </li>
 {% endmacro %}
 {% block content %}
-<header class="page-head"><div><h1>组织架构</h1><p>连线表示上下级关系。技术成员归入对应方向负责人下，兼任在各职务分别展示；点击姓名查看资料。</p></div></header>
+<header class="page-head"><div><h1>组织架构</h1><p>从上向下查看上下级关系，同级职务并排显示。技术成员归入对应方向负责人下；点击姓名查看资料。</p></div></header>
+<p class="muted org-hint">左右滚动架构图可查看全部分支。</p>
 <div class="org-layout">
-  <section class="card org-chart" aria-label="社团上下级架构"><ul>{% for node in tree %}{{ branch(node) }}{% endfor %}</ul></section>
+  <section class="card org-chart" aria-label="社团上下级架构" tabindex="0"><ul class="org-tree">{% for node in tree %}{{ branch(node) }}{% endfor %}</ul></section>
   <aside class="org-independent" aria-label="独立职务">
     <p class="muted">独立职务 · 不参与上下级架构</p>
     {% for node in independent %}<article class="card"><h2>{{ node.title }} <span class="count">{{ node.people|length }}</span></h2>{{ people(node) }}</article>{% endfor %}

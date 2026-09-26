@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ club_name }}{% endblock %}</title>
   <link rel="icon" href="/static/favicon.svg">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=20260926-nav1">
+  <script src="/static/navigation.js?v=20260926-nav1" defer></script>
 </head>
 <body>
-  <div class="layout">
+  <div class="layout" data-user-id="{{ me.id }}" data-shell-version="20260926-nav1">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">社</div>
@@ -17,7 +18,7 @@
           <small>运营与资料</small>
         </div>
       </div>
-      <nav class="nav">
+      <nav class="nav" aria-label="模块导航">
         <p>工作台</p>
         <a class="{% if nav == 'home' %}active{% endif %}" href="/"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg><span>首页</span></a>
         <a class="{% if nav == 'approvals' %}active{% endif %}" href="/approvals"><svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg><span>审批</span>{% if badges.approvals %}<em>{{ badges.approvals }}</em>{% endif %}</a>
@@ -46,7 +47,7 @@
           <small>{{ me.role_text }}</small>
         </div>
         <div class="side-links">
-          <a href="/profile">设置</a>
+          <a href="/profile" data-page-link>设置</a>
           <form method="post" action="/logout">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <button class="link-button" type="submit">退出</button>
@@ -54,11 +55,14 @@
         </div>
       </div>
     </aside>
-    <main class="main">
+    <div class="page-viewport">
+    <main class="main" tabindex="-1" data-module="{{ nav }}">
       {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
       {% if me.warn_password %}<div class="flash warn">还在用初始密码，请到设置里改掉。</div>{% endif %}
       {% block content %}{% endblock %}
     </main>
+    <div class="navigation-status" role="status" aria-live="polite"></div>
+    </div>
   </div>
 </body>
 </html>

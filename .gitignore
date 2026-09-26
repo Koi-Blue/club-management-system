@@ -7,3 +7,4 @@ data/
 *.db
 .DS_Store
 backups/
+tests/browser/node_modules/

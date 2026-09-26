@@ -5,7 +5,7 @@
   <div><h1>部门资料库</h1><p>本部门资料在这里。部长可以上传。</p></div>
 </header>
 <div class="filters">
-  {% for dept in me.library_departments %}<a class="{% if current == dept %}on{% endif %}" href="/library?department={{ dept }}">{{ dept }}</a>{% endfor %}
+  {% for dept in me.library_departments %}<a data-page-link class="{% if current == dept %}on{% endif %}" href="/library?department={{ dept }}">{{ dept }}</a>{% endfor %}
 </div>
 <section class="card">
   {% if files %}

@@ -9,7 +9,7 @@
 </header>
 {% if todos %}
 <div class="todo">
-  {% for item in todos %}<a href="{{ item.href }}">{{ item.text }}</a>{% endfor %}
+  {% for item in todos %}<a data-page-link href="{{ item.href }}">{{ item.text }}</a>{% endfor %}
 </div>
 {% endif %}
 <section class="grid two">
@@ -18,7 +18,7 @@
     {% if upcoming %}
     <div class="list">
       {% for item in upcoming %}
-      <a class="item" href="/activities/{{ item.id }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.start_at }} {% if item.location %}· {{ item.location }}{% endif %}</p></a>
+      <a data-page-link class="item" href="/activities/{{ item.id }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.start_at }} {% if item.location %}· {{ item.location }}{% endif %}</p></a>
       {% endfor %}
     </div>
     {% else %}<p class="empty">还没有已发放的活动。</p>{% endif %}
@@ -45,7 +45,7 @@
     <div class="list">
       {% for item in my_claims %}<div class="item"><h3>{{ item.amount }} 元</h3><p class="muted">{{ claim_status[item.status] }} · {{ item.reason }}</p></div>{% endfor %}
     </div>
-    {% else %}<p class="empty">还没有报销申请。<a href="/finance">去提交</a></p>{% endif %}
+    {% else %}<p class="empty">还没有报销申请。<a data-page-link href="/finance">去提交</a></p>{% endif %}
   </article>
 </section>
 {% endblock %}

@@ -3,7 +3,7 @@
 {% block content %}
 <header class="page-head">
   <div><h1>{{ entry.title }}</h1><p class="muted">{{ entry.updated_at }}</p></div>
-  <a class="secondary" href="/journal/{{ entry.id }}/edit">编辑</a>
+  <a data-page-link class="secondary" href="/journal/{{ entry.id }}/edit">编辑</a>
 </header>
 <article class="card prose">{{ entry.html | safe }}</article>
 <form method="post" action="/journal/{{ entry.id }}/delete" style="margin-top:0.8rem">

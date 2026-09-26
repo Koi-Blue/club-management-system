@@ -6,7 +6,7 @@
   {% if items %}
   <div class="list">
     {% for item in items %}
-    <a class="item" href="{{ item.href }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.kind }} · {{ item.meta }}</p></a>
+    <a data-page-link class="item" href="{{ item.href }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.kind }} · {{ item.meta }}</p></a>
     {% endfor %}
   </div>
   {% else %}<p class="empty">现在没有待你处理的事项。</p>{% endif %}

@@ -7,7 +7,7 @@
     {% if items %}
     <div class="list">
       {% for item in items %}
-      <a class="item" href="/forum/{{ item.id }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.scope }} · {{ item.author }} · {{ item.created_at }}</p></a>
+      <a data-page-link class="item" href="/forum/{{ item.id }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.scope }} · {{ item.author }} · {{ item.created_at }}</p></a>
       {% endfor %}
     </div>
     {% else %}<p class="empty">还没有你能看的帖子。</p>{% endif %}

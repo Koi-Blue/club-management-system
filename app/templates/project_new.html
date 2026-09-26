@@ -13,6 +13,6 @@
       {% for person in people %}<label><input type="checkbox" name="members" value="{{ person.id }}" {% if person.checked %}checked{% endif %}>{{ person.class_name }} {{ person.real_name }}</label>{% endfor %}
     </div>
   </div>
-  <div class="actions span-2"><button class="primary" type="submit">保存草稿</button><a class="secondary" href="/projects">返回</a></div>
+  <div class="actions span-2"><button class="primary" type="submit">保存草稿</button><a data-page-link class="secondary" href="/projects">返回</a></div>
 </form>
 {% endblock %}
