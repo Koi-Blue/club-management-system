@@ -58,6 +58,7 @@
     <div class="page-viewport">
     <main class="main" tabindex="-1" data-module="{{ nav }}">
       {% if flash %}<div class="flash {{ flash.level }}">{{ flash.message }}</div>{% endif %}
+      {% if me.must_change_password %}<div class="flash warn">请先设置新密码。完成前不能使用其他功能。</div>{% endif %}
       {% if me.warn_password %}<div class="flash warn">还在用初始密码，请到设置里改掉。</div>{% endif %}
       {% block content %}{% endblock %}
     </main>

@@ -4,7 +4,7 @@
 <header class="page-head">
   <div>
     <h1>账号与职务</h1>
-    <p>审批、分配职务和删除。删除后不能登录，档案仍保留并标注已注销。</p>
+    <p>审批、分配职务、重置密码和删除。临时密码只显示一次。删除后不能登录，档案仍保留并标注已注销。</p>
   </div>
 </header>
 <section class="card" style="margin-bottom:1rem">
@@ -45,6 +45,7 @@
         <div class="actions"><button class="secondary" type="submit">保存职务与方向</button></div>
       </form>
       <div class="actions">
+        <form method="post" action="/members/{{ person.id }}/reset-password" onsubmit="return confirm('确定重置这个成员的密码？临时密码只显示一次。')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">重置密码</button></form>
         <form method="post" action="/members/{{ person.id }}/disable"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">停用</button></form>
         <form method="post" action="/members/{{ person.id }}/delete" onsubmit="return confirm('确定删除这个成员？账号将不能登录，已有档案会保留。')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger" type="submit">删除</button></form>
       </div>
@@ -62,6 +63,9 @@
       <strong>{{ person.real_name }}</strong>
       <span class="badge badge-{{ person.status }}">{{ user_status[person.status] }}</span>
       <p class="muted">@{{ person.username }} · {{ person.phone }}</p>
+      {% if person.status == 'disabled' %}
+      <form method="post" action="/members/{{ person.id }}/reset-password" onsubmit="return confirm('确定重置这个成员的密码？临时密码只显示一次。')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">重置密码</button></form>
+      {% endif %}
       {% if person.status != 'deleted' %}
       <form method="post" action="/members/{{ person.id }}/enable"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">重新启用</button></form>
       {% endif %}

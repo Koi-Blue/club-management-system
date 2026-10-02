@@ -124,7 +124,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         request.session.clear()
         request.session["csrf"] = secrets.token_hex(16)
         request.session["warn_password"] = bool(user.is_admin and same_secret(password, settings.admin_password))
-        response = redirect("/")
+        response = redirect("/profile" if user.must_change_password else "/")
         response.set_cookie("club_jwt", issue_token(settings.secret_key, user.id), httponly=True, samesite="lax", max_age=14 * 24 * 3600, path="/")
         return response
 
@@ -142,6 +142,9 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         user = active_user(request, db)
         if user is None:
             return None, redirect("/login")
+        if user.must_change_password and request.url.path not in {"/profile", "/profile/password"}:
+            flash(request, "请先设置新密码，完成前不能使用其他功能", "error")
+            return None, redirect("/profile")
         return user, None
 
     def fail(request: Request, url: str, exc: AppError):
@@ -161,6 +164,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             "roles": roles,
             "role_text": "、".join(labels) if labels else "未分配职务",
             "department": user.department,
+            "must_change_password": bool(user.must_change_password),
             "warn_password": password_warning(request, user),
             "finance": finance,
             "can_announce": can_announce(user.is_admin, roles),
@@ -196,8 +200,9 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         return await request.form()
 
     def auth_page(request: Request, db: Session, name: str):
-        if active_user(request, db):
-            return redirect("/")
+        current = active_user(request, db)
+        if current:
+            return redirect("/profile" if current.must_change_password else "/")
         return render(request, name, {"csrf": ensure_csrf(request), "flash": request.session.pop("flash", None), "club_name": svc.club_name(db)})
 
     @app.get("/healthz")
@@ -356,6 +361,23 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
     @app.post("/members/{user_id}/roles")
     async def members_roles(user_id: int, request: Request, db: Session = Depends(get_db)):
         return await member_post(user_id, request, db, lambda actor, uid, form: svc.set_roles(db, actor, uid, [str(item) for item in form.getlist("roles")]), "职务已保存")
+
+    @app.post("/members/{user_id}/reset-password")
+    async def members_reset_password(user_id: int, request: Request, db: Session = Depends(get_db)):
+        form = await form_of(request)
+        actor, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        if not csrf_ok(request, str(form.get("csrf") or "")):
+            flash(request, "页面已过期，请刷新后重试", "error")
+            return redirect("/members")
+        try:
+            temporary = svc.reset_member_password(db, actor, user_id)
+        except AppError as exc:
+            return fail(request, "/members", exc)
+        target = db.get(User, user_id)
+        flash(request, f"已重置{target.real_name if target else '该成员'}的密码。临时密码只显示这一次：{temporary}")
+        return redirect("/members")
 
     @app.get("/projects")
     def projects_page(request: Request, db: Session = Depends(get_db)):
@@ -956,13 +978,17 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             flash(request, "页面已过期，请刷新后重试", "error")
             return redirect("/profile")
         new_password = str(form.get("new_password") or "")
+        forced = bool(user.must_change_password)
         try:
-            svc.change_password(db, user, str(form.get("current") or ""), new_password, str(form.get("confirm") or ""))
+            svc.change_password(
+                db, user, str(form.get("current") or ""), new_password, str(form.get("confirm") or ""),
+                skip_current=forced,
+            )
         except AppError as exc:
             return fail(request, "/profile", exc)
         request.session["warn_password"] = bool(user.is_admin and same_secret(new_password, settings.admin_password))
         flash(request, "密码已更新")
-        return redirect("/profile")
+        return redirect("/" if forced else "/profile")
 
     @app.post("/profile/club")
     async def profile_club(request: Request, db: Session = Depends(get_db)):
