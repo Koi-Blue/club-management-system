@@ -220,12 +220,14 @@ def test_claim_materials_access_validation_and_existing_workflow(site):
 def test_claim_file_failure_rolls_back_database_and_disk(site, monkeypatch):
     _, _, member, root = site
     client, _ = member('diskfailure')
-    original = Path.write_bytes
-    def broken(path, content):
+    original = svc.write_upload_body
+
+    def broken(path, source, max_size):
         if path.suffix == '.png':
             raise OSError('disk full')
-        return original(path, content)
-    monkeypatch.setattr(Path, 'write_bytes', broken)
+        return original(path, source, max_size)
+
+    monkeypatch.setattr(svc, 'write_upload_body', broken)
     result = post(client, '/finance/claims', {'amount': '1', 'reason': '异常上传'}, files=attachments())
     assert '报销未提交' in result.text
     with database.SessionLocal() as db:
