@@ -1,5 +1,10 @@
+import os
 import re
 import secrets
+import tempfile
+import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -57,8 +62,18 @@ ALLOWED_FILE_EXT = {
     ".png", ".jpg", ".jpeg", ".zip", ".txt", ".csv",
 }
 MAX_FILE_SIZE = 20 * 1024 * 1024
+UPLOAD_CHUNK = 64 * 1024
+MAX_CONCURRENT_UPLOADS = 2
+BADGE_TTL_SECONDS = 45
+CLUB_NAME_TTL_SECONDS = 45
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_\u4e00-\u9fff]{3,32}$")
 PHONE_RE = re.compile(r"^1\d{10}$")
+_cache_lock = threading.Lock()
+_upload_slots = threading.BoundedSemaphore(MAX_CONCURRENT_UPLOADS)
+_club_name_cache: dict[str, tuple[int, float, str]] = {}
+_club_name_gen: dict[str, int] = {}
+_badge_cache: dict[str, tuple[int, float, dict]] = {}
+_badge_gen: dict[str, int] = {}
 
 
 class AppError(Exception):
@@ -121,9 +136,42 @@ def parse_day(raw: str, label: str) -> str:
     return text
 
 
+def _db_scope(db: Session) -> str:
+    bind = db.get_bind()
+    url = getattr(bind, "url", None)
+    if url is None and hasattr(bind, "engine"):
+        url = bind.engine.url
+    return str(url)
+
+
+def invalidate_club_name_cache(db: Session) -> None:
+    scope = _db_scope(db)
+    with _cache_lock:
+        _club_name_gen[scope] = _club_name_gen.get(scope, 0) + 1
+        _club_name_cache.pop(scope, None)
+
+
+def invalidate_nav_badges(db: Session) -> None:
+    scope = _db_scope(db)
+    with _cache_lock:
+        _badge_gen[scope] = _badge_gen.get(scope, 0) + 1
+        _badge_cache.pop(scope, None)
+
+
 def club_name(db: Session) -> str:
+    scope = _db_scope(db)
+    now = time.monotonic()
+    with _cache_lock:
+        generation = _club_name_gen.get(scope, 0)
+        cached = _club_name_cache.get(scope)
+        if cached and cached[0] == generation and now - cached[1] < CLUB_NAME_TTL_SECONDS:
+            return cached[2]
     row = db.get(Setting, "club_name")
-    return row.value if row and row.value else "社团"
+    value = row.value if row and row.value else "社团"
+    with _cache_lock:
+        if _club_name_gen.get(scope, 0) == generation:
+            _club_name_cache[scope] = (generation, time.monotonic(), value)
+    return value
 
 
 def set_club_name(db: Session, name: str) -> None:
@@ -136,12 +184,118 @@ def set_club_name(db: Session, name: str) -> None:
     else:
         row.value = cleaned
     db.commit()
+    invalidate_club_name_cache(db)
+
+
+def _sort_roles(roles: list[str]) -> list[str]:
+    order = {name: index for index, name in enumerate(CLUB_ROLES)}
+    return sorted(roles, key=lambda item: order.get(item, 99))
+
+
+def _role_cache(db: Session) -> dict[int, list[str]]:
+    cache = db.info.get("role_cache")
+    if cache is None:
+        cache = {}
+        db.info["role_cache"] = cache
+    return cache
+
+
+def forget_cached_roles(db: Session, user_id: int) -> None:
+    cache = db.info.get("role_cache")
+    if cache is not None:
+        cache.pop(user_id, None)
 
 
 def roles_of(db: Session, user_id: int) -> list[str]:
+    cache = _role_cache(db)
+    cached = cache.get(user_id)
+    if cached is not None:
+        return list(cached)
     rows = db.scalars(select(UserRole.role).where(UserRole.user_id == user_id)).all()
-    order = {name: index for index, name in enumerate(CLUB_ROLES)}
-    return sorted(rows, key=lambda item: order.get(item, 99))
+    result = _sort_roles(list(rows))
+    cache[user_id] = result
+    return list(result)
+
+
+def roles_of_many(db: Session, user_ids) -> dict[int, list[str]]:
+    ids: list[int] = []
+    seen: set[int] = set()
+    for raw in user_ids:
+        if not raw or raw in seen:
+            continue
+        seen.add(int(raw))
+        ids.append(int(raw))
+    if not ids:
+        return {}
+    cache = _role_cache(db)
+    missing = [user_id for user_id in ids if user_id not in cache]
+    if missing:
+        grouped: dict[int, list[str]] = {user_id: [] for user_id in missing}
+        rows = db.execute(select(UserRole.user_id, UserRole.role).where(UserRole.user_id.in_(missing))).all()
+        for user_id, role in rows:
+            grouped.setdefault(int(user_id), []).append(role)
+        for user_id in missing:
+            cache[user_id] = _sort_roles(grouped.get(user_id, []))
+    return {user_id: list(cache.get(user_id, [])) for user_id in ids}
+
+
+def nav_badge_snapshot(db: Session) -> dict:
+    scope = _db_scope(db)
+    now = time.monotonic()
+    with _cache_lock:
+        generation = _badge_gen.get(scope, 0)
+        cached = _badge_cache.get(scope)
+        if cached and cached[0] == generation and now - cached[1] < BADGE_TTL_SECONDS:
+            return cached[2]
+    pending_users = int(db.scalar(select(func.count()).select_from(User).where(User.status == "pending")) or 0)
+    pending_projects = int(db.scalar(select(func.count()).select_from(Project).where(Project.status == "pending")) or 0)
+    pending_borrows = int(db.scalar(select(func.count()).select_from(Borrow).where(Borrow.status == "pending")) or 0)
+    pending_reimbursements = int(db.scalar(select(func.count()).select_from(Reimbursement).where(Reimbursement.status == "pending")) or 0)
+    pending_leaves = int(db.scalar(select(func.count()).select_from(LeaveRequest).where(LeaveRequest.status == "pending")) or 0)
+    draft_rows = db.execute(
+        select(Activity.creator_id, func.count()).where(Activity.status == "draft").group_by(Activity.creator_id)
+    ).all()
+    draft_by_creator = {int(creator_id): int(count) for creator_id, count in draft_rows}
+    data = {
+        "pending_users": pending_users,
+        "pending_projects": pending_projects,
+        "pending_borrows": pending_borrows,
+        "pending_reimbursements": pending_reimbursements,
+        "pending_leaves": pending_leaves,
+        "draft_activities": sum(draft_by_creator.values()),
+        "draft_by_creator": draft_by_creator,
+    }
+    with _cache_lock:
+        if _badge_gen.get(scope, 0) == generation:
+            _badge_cache[scope] = (generation, time.monotonic(), data)
+    return data
+
+
+def pending_member_count(db: Session, user: User) -> int:
+    if not user.is_admin:
+        return 0
+    return nav_badge_snapshot(db)["pending_users"]
+
+
+def approval_count(db: Session, user: User, roles: list[str]) -> int:
+    snap = nav_badge_snapshot(db)
+    total = 0
+    if user.is_admin:
+        total += snap["pending_users"]
+    if can_approve_project(user.is_admin, roles):
+        total += snap["pending_projects"]
+    if can_issue_activity(user.is_admin, roles) or "荣誉社长" in roles:
+        if can_issue_activity(user.is_admin, roles):
+            total += snap["draft_activities"]
+        else:
+            total += snap["draft_by_creator"].get(user.id, 0)
+    if can_approve_borrow(user.is_admin, roles):
+        total += snap["pending_borrows"]
+    if sees_finance(user.is_admin, roles):
+        total += snap["pending_reimbursements"]
+    if user.is_admin or "社长" in roles or "副社长" in roles or "指导老师" in roles or managed_departments(roles):
+        total += snap["pending_leaves"]
+    return total
 
 
 def name_of(user: User | None) -> str:
@@ -276,6 +430,7 @@ def register_user(db: Session, username: str, password: str, real_name: str, pho
         db.flush()
         db.add(UserRole(user_id=user.id, role=f"技术部{direction}成员"))
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def authenticate(db: Session, account: str, password: str) -> User:
@@ -306,6 +461,8 @@ def approve_user(db: Session, actor: User, user_id: int) -> None:
     if user.department in DEPARTMENTS and not roles_of(db, user.id):
         db.add(UserRole(user_id=user.id, role=f"{user.department}成员"))
     db.commit()
+    forget_cached_roles(db, user.id)
+    invalidate_nav_badges(db)
 
 
 def reject_user(db: Session, actor: User, user_id: int) -> None:
@@ -316,6 +473,7 @@ def reject_user(db: Session, actor: User, user_id: int) -> None:
         raise AppError("找不到这个账号")
     user.status = "rejected"
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def set_user_status(db: Session, actor: User, user_id: int, status: str) -> None:
@@ -328,6 +486,7 @@ def set_user_status(db: Session, actor: User, user_id: int, status: str) -> None
         raise AppError("状态不正确")
     user.status = status
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def delete_user(db: Session, actor: User, user_id: int) -> None:
@@ -338,6 +497,7 @@ def delete_user(db: Session, actor: User, user_id: int) -> None:
         raise AppError("不能删除超级管理员")
     user.status = "deleted"
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def set_roles(db: Session, actor: User, user_id: int, selected: list[str]) -> None:
@@ -359,6 +519,7 @@ def set_roles(db: Session, actor: User, user_id: int, selected: list[str]) -> No
     for role in final:
         db.add(UserRole(user_id=user.id, role=role))
     db.commit()
+    forget_cached_roles(db, user.id)
 
 
 def change_password(db: Session, user: User, current: str, new_password: str, confirm: str) -> None:
@@ -410,6 +571,7 @@ def submit_project(db: Session, user: User, roles: list[str], project_id: int) -
     project.status = "pending"
     project.updated_at = utcnow()
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def review_project(db: Session, user: User, roles: list[str], project_id: int, decision: str, comment: str) -> None:
@@ -425,6 +587,7 @@ def review_project(db: Session, user: User, roles: list[str], project_id: int, d
     project.review_comment = optional_text(comment, "审批意见", 200)
     project.updated_at = utcnow()
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def archive_project(db: Session, user: User, roles: list[str], project_id: int) -> None:
@@ -438,11 +601,61 @@ def archive_project(db: Session, user: User, roles: list[str], project_id: int) 
     db.commit()
 
 
-def _store_file(upload_dir: str, folder_parts: list[str], filename: str, content: bytes) -> tuple[str, str, int]:
-    if not content:
-        raise AppError("请选择文件")
-    if len(content) > MAX_FILE_SIZE:
-        raise AppError("单个文件不能超过 20MB")
+@contextmanager
+def upload_slot():
+    if not _upload_slots.acquire(blocking=False):
+        raise AppError("同时上传的文件较多，请稍后再试")
+    try:
+        yield
+    finally:
+        _upload_slots.release()
+
+
+def write_upload_body(path: Path, source, max_size: int) -> tuple[int, bytes]:
+    """按固定块把 source 写入 path，超过上限后停止，避免整文件进内存。"""
+    header = bytearray()
+    size = 0
+    with path.open("wb") as handle:
+        while True:
+            chunk = source.read(UPLOAD_CHUNK)
+            if not chunk:
+                break
+            if isinstance(chunk, str):
+                raise AppError("文件读取失败")
+            chunk = bytes(chunk)
+            size += len(chunk)
+            if len(header) < 16:
+                header += chunk[: 16 - len(header)]
+            handle.write(chunk)
+            if size > max_size:
+                break
+    return size, bytes(header)
+
+
+def spool_upload(directory: Path, suffix: str, source, *, max_size: int, empty_message: str, size_message: str) -> tuple[Path, int, bytes]:
+    seek = getattr(source, "seek", None)
+    if callable(seek):
+        try:
+            seek(0)
+        except OSError:
+            pass
+    directory.mkdir(parents=True, exist_ok=True)
+    descriptor, raw_name = tempfile.mkstemp(prefix=".up-", suffix=suffix or ".bin", dir=directory)
+    os.close(descriptor)
+    path = Path(raw_name)
+    try:
+        size, header = write_upload_body(path, source, max_size)
+        if size <= 0:
+            raise AppError(empty_message)
+        if size > max_size:
+            raise AppError(size_message)
+        return path, size, header
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+
+
+def _store_file(upload_dir: str, folder_parts: list[str], filename: str, source) -> tuple[str, str, int]:
     original = Path(filename or "").name
     suffix = Path(original).suffix.lower()
     if suffix not in ALLOWED_FILE_EXT:
@@ -451,9 +664,15 @@ def _store_file(upload_dir: str, folder_parts: list[str], filename: str, content
         original = original[-180:]
     stored = f"{secrets.token_hex(16)}{suffix}"
     folder = Path(upload_dir).joinpath(*folder_parts)
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / stored).write_bytes(content)
-    return stored, original, len(content)
+    temporary, size, _header = spool_upload(
+        folder, suffix, source, max_size=MAX_FILE_SIZE, empty_message="请选择文件", size_message="单个文件不能超过 20MB",
+    )
+    try:
+        os.replace(temporary, folder / stored)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    return stored, original, size
 
 
 def safe_path(upload_dir: str, parts: list[str]) -> Path:
@@ -464,13 +683,14 @@ def safe_path(upload_dir: str, parts: list[str]) -> Path:
     return path
 
 
-def save_project_file(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int, filename: str, content: bytes) -> None:
+def save_project_file(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int, filename: str, source) -> None:
     project = db.get(Project, project_id)
     if project is None or not can_view_project(db, user, roles, project):
         raise AppError("找不到这个立项")
     if not project_related(db, user, project) and not sees_all_projects(roles):
         raise AppError("没有权限上传资料")
-    stored, original, size = _store_file(upload_dir, ["projects", str(project.id)], filename, content)
+    with upload_slot():
+        stored, original, size = _store_file(upload_dir, ["projects", str(project.id)], filename, source)
     db.add(ProjectFile(project_id=project.id, stored_name=stored, original_name=original, size=size, uploader_id=user.id))
     project.updated_at = utcnow()
     db.commit()
@@ -490,10 +710,11 @@ def delete_project_file(db: Session, user: User, roles: list[str], upload_dir: s
     db.commit()
 
 
-def save_library_file(db: Session, user: User, roles: list[str], upload_dir: str, department: str, filename: str, content: bytes) -> None:
+def save_library_file(db: Session, user: User, roles: list[str], upload_dir: str, department: str, filename: str, source) -> None:
     if department not in DEPARTMENTS or not can_upload_library(user, roles, department):
         raise AppError("没有权限上传这个部门的资料")
-    stored, original, size = _store_file(upload_dir, ["library", department], filename, content)
+    with upload_slot():
+        stored, original, size = _store_file(upload_dir, ["library", department], filename, source)
     db.add(LibraryFile(department=department, stored_name=stored, original_name=original, size=size, uploader_id=user.id))
     db.commit()
 
@@ -531,8 +752,32 @@ def borrowed_qty(db: Session, asset_id: int) -> int:
     return int(used or 0)
 
 
+def borrowed_quantities(db: Session, asset_ids) -> dict[int, int]:
+    ids: list[int] = []
+    seen: set[int] = set()
+    for raw in asset_ids:
+        if not raw or raw in seen:
+            continue
+        seen.add(int(raw))
+        ids.append(int(raw))
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(Borrow.asset_id, func.coalesce(func.sum(Borrow.qty), 0))
+        .where(Borrow.asset_id.in_(ids), Borrow.status == "approved")
+        .group_by(Borrow.asset_id)
+    ).all()
+    found = {int(asset_id): int(total or 0) for asset_id, total in rows}
+    return {asset_id: found.get(asset_id, 0) for asset_id in ids}
+
+
 def available_qty(db: Session, asset: Asset) -> int:
     return asset.total_qty - borrowed_qty(db, asset.id)
+
+
+def available_quantities(db: Session, assets) -> dict[int, int]:
+    borrowed = borrowed_quantities(db, [asset.id for asset in assets])
+    return {asset.id: asset.total_qty - borrowed.get(asset.id, 0) for asset in assets}
 
 
 def request_borrow(db: Session, user: User, asset_id: int, qty: int, reason: str, due_raw: str) -> None:
@@ -548,6 +793,7 @@ def request_borrow(db: Session, user: User, asset_id: int, qty: int, reason: str
         raise AppError("可借数量不足")
     db.add(Borrow(asset_id=asset.id, user_id=user.id, qty=qty, reason=optional_text(reason, "借用事由", 200), status="pending", due_at=due_at))
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def review_borrow(db: Session, user: User, roles: list[str], borrow_id: int, decision: str, comment: str) -> None:
@@ -567,6 +813,7 @@ def review_borrow(db: Session, user: User, roles: list[str], borrow_id: int, dec
     row.reviewer_id = user.id
     row.review_comment = optional_text(comment, "审批意见", 200)
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def return_borrow(db: Session, user: User, roles: list[str], borrow_id: int) -> None:
@@ -610,6 +857,7 @@ def create_activity(db: Session, user: User, roles: list[str], title: str, descr
     )
     db.add(activity)
     db.commit()
+    invalidate_nav_badges(db)
     db.refresh(activity)
     return activity
 
@@ -630,6 +878,7 @@ def issue_activity(db: Session, user: User, roles: list[str], activity_id: int) 
     activity.checkin_code = f"{secrets.randbelow(1000000):06d}"
     activity.review_comment = ""
     db.commit()
+    invalidate_nav_badges(db)
     return activity.checkin_code
 
 
@@ -643,6 +892,7 @@ def reject_activity(db: Session, user: User, roles: list[str], activity_id: int,
     activity.issuer_id = user.id
     activity.review_comment = optional_text(comment, "驳回意见", 200)
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def close_activity(db: Session, user: User, roles: list[str], activity_id: int) -> None:
@@ -799,6 +1049,7 @@ def review_reimbursement(db: Session, user: User, roles: list[str], item_id: int
     row.reviewer_id = user.id
     row.review_comment = optional_text(comment, "审批意见", 200)
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def pay_reimbursement(db: Session, user: User, roles: list[str], item_id: int) -> None:
@@ -831,6 +1082,7 @@ def request_leave(db: Session, user: User, start_on: str, end_on: str, reason: s
         raise AppError("结束日期不能早于开始日期")
     db.add(LeaveRequest(user_id=user.id, start_on=start, end_on=end, reason=require_text(reason, "请假事由", 200), status="pending"))
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def review_leave(db: Session, user: User, roles: list[str], item_id: int, decision: str, comment: str) -> None:
@@ -850,6 +1102,7 @@ def review_leave(db: Session, user: User, roles: list[str], item_id: int, decisi
     row.reviewer_id = user.id
     row.review_comment = optional_text(comment, "审批意见", 200)
     db.commit()
+    invalidate_nav_badges(db)
 
 
 def create_duty(db: Session, user: User, roles: list[str], duty_on: str, user_id: int, note: str) -> None:
@@ -872,10 +1125,14 @@ def delete_duty(db: Session, user: User, roles: list[str], duty_id: int) -> None
     db.commit()
 
 
-def build_org_tree(db: Session, viewer: User, viewer_roles: list[str]) -> dict:
+def build_org_tree(db: Session, viewer: User, viewer_roles: list[str] | None = None) -> dict:
     users = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.class_name, User.real_name)).all()
     grouped: dict[str, list[dict]] = {role: [] for role in CLUB_ROLES}
-    role_cache = {user.id: roles_of(db, user.id) for user in users}
+    role_cache = roles_of_many(db, [user.id for user in users])
+    if viewer_roles is None:
+        viewer_roles = role_cache.get(viewer.id)
+        if viewer_roles is None:
+            viewer_roles = roles_of(db, viewer.id)
     for user in users:
         target_roles = role_cache[user.id]
         visible_phone = user.phone if can_see_member_phone(viewer.is_admin, viewer_roles, target_roles, viewer.id == user.id) else ""

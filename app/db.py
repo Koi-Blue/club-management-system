@@ -84,5 +84,7 @@ def init_db(settings: Settings) -> None:
             )
             db.add(admin)
         db.commit()
+        from app.services import invalidate_club_name_cache
+        invalidate_club_name_cache(db)
     finally:
         db.close()

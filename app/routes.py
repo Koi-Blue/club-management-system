@@ -113,12 +113,30 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return True
         return captcha_matches(settings.secret_key, request.cookies.get("captcha"), str(form.get("captcha") or ""))
 
-    def login_response(request: Request, user: User):
+    def same_secret(left: str, right: str) -> bool:
+        raw_left = left.encode()
+        raw_right = right.encode()
+        if len(raw_left) != len(raw_right):
+            return False
+        return secrets.compare_digest(raw_left, raw_right)
+
+    def login_response(request: Request, user: User, password: str):
         request.session.clear()
         request.session["csrf"] = secrets.token_hex(16)
+        request.session["warn_password"] = bool(user.is_admin and same_secret(password, settings.admin_password))
         response = redirect("/")
         response.set_cookie("club_jwt", issue_token(settings.secret_key, user.id), httponly=True, samesite="lax", max_age=14 * 24 * 3600, path="/")
         return response
+
+    def password_warning(request: Request, user: User) -> bool:
+        if not user.is_admin:
+            return False
+        flag = request.session.get("warn_password")
+        if isinstance(flag, bool):
+            return flag
+        flag = bool(verify_password(settings.admin_password, user.password_hash))
+        request.session["warn_password"] = flag
+        return flag
 
     def guard(request: Request, db: Session):
         user = active_user(request, db)
@@ -135,7 +153,6 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         finance = sees_finance(user.is_admin, roles)
         labels = ["超级管理员"] if user.is_admin else []
         labels.extend(roles)
-        pending_users = int(db.scalar(select(func.count()).select_from(User).where(User.status == "pending")) or 0) if user.is_admin else 0
         me = {
             "id": user.id,
             "username": user.username,
@@ -144,7 +161,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             "roles": roles,
             "role_text": "、".join(labels) if labels else "未分配职务",
             "department": user.department,
-            "warn_password": user.is_admin and verify_password(settings.admin_password, user.password_hash),
+            "warn_password": password_warning(request, user),
             "finance": finance,
             "can_announce": can_announce(user.is_admin, roles),
             "can_create_activity": can_create_activity(user.is_admin, roles),
@@ -162,7 +179,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             "club_name": svc.club_name(db),
             "me": me,
             "nav": nav,
-            "badges": {"members": pending_users, "approvals": approval_count(db, user, roles)},
+            "badges": {"members": svc.pending_member_count(db, user), "approvals": svc.approval_count(db, user, roles)},
             "club_roles": CLUB_ROLES,
             "role_groups": [
                 ("社团职务", ["指导老师", "社长", "副社长", "荣誉社长"]),
@@ -174,25 +191,6 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         }
         context.update(extra)
         return context
-
-    def approval_count(db: Session, user: User, roles: list[str]) -> int:
-        total = 0
-        if user.is_admin:
-            total += int(db.scalar(select(func.count()).select_from(User).where(User.status == "pending")) or 0)
-        if can_approve_project(user.is_admin, roles):
-            total += int(db.scalar(select(func.count()).select_from(Project).where(Project.status == "pending")) or 0)
-        if can_issue_activity(user.is_admin, roles) or "荣誉社长" in roles:
-            drafts = select(func.count()).select_from(Activity).where(Activity.status == "draft")
-            if not can_issue_activity(user.is_admin, roles):
-                drafts = drafts.where(Activity.creator_id == user.id)
-            total += int(db.scalar(drafts) or 0)
-        if can_approve_borrow(user.is_admin, roles):
-            total += int(db.scalar(select(func.count()).select_from(Borrow).where(Borrow.status == "pending")) or 0)
-        if sees_finance(user.is_admin, roles):
-            total += int(db.scalar(select(func.count()).select_from(Reimbursement).where(Reimbursement.status == "pending")) or 0)
-        if user.is_admin or "社长" in roles or "副社长" in roles or "指导老师" in roles or svc.managed_departments(roles):
-            total += int(db.scalar(select(func.count()).select_from(LeaveRequest).where(LeaveRequest.status == "pending")) or 0)
-        return total
 
     async def form_of(request: Request):
         return await request.form()
@@ -228,10 +226,11 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             flash(request, "验证码不正确或已过期", "error")
             return redirect("/login")
         try:
-            user = svc.authenticate(db, str(form.get("account") or ""), str(form.get("password") or ""))
+            password = str(form.get("password") or "")
+            user = svc.authenticate(db, str(form.get("account") or ""), password)
         except AppError as exc:
             return fail(request, "/login", exc)
-        return login_response(request, user)
+        return login_response(request, user, password)
 
     @app.get("/register")
     def register_page(request: Request, db: Session = Depends(get_db)):
@@ -296,7 +295,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         user, bounce = guard(request, db)
         if bounce:
             return bounce
-        return render(request, "org.html", shell(request, db, user, "org", **svc.build_org_tree(db, user, svc.roles_of(db, user.id))))
+        return render(request, "org.html", shell(request, db, user, "org", **svc.build_org_tree(db, user)))
 
     @app.get("/members")
     def members_page(request: Request, db: Session = Depends(get_db)):
@@ -306,10 +305,11 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if not user.is_admin:
             return redirect("/org")
         rows = db.scalars(select(User).where(User.is_admin.is_(False)).order_by(User.created_at.desc())).all()
+        role_map = svc.roles_of_many(db, [row.id for row in rows])
         people = [{
             "id": row.id, "username": row.username, "real_name": row.real_name, "phone": row.phone,
             "college": row.college, "class_name": row.class_name, "department": row.department,
-            "status": row.status, "roles": svc.roles_of(db, row.id), "created_at": svc.fmt_dt(row.created_at),
+            "status": row.status, "roles": role_map.get(row.id, []), "created_at": svc.fmt_dt(row.created_at),
         } for row in rows]
         return render(request, "members.html", shell(
             request, db, user, "members",
@@ -460,7 +460,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             upload = form.get("file")
             if upload is None or not getattr(upload, "filename", ""):
                 raise AppError("请选择文件")
-            svc.save_project_file(db, actor, roles, settings.upload_dir, project_id, upload.filename, upload.file.read())
+            svc.save_project_file(db, actor, roles, settings.upload_dir, project_id, upload.filename, upload.file)
         return await project_action(project_id, request, db, action, "资料已上传")
 
     @app.post("/projects/{project_id}/files/{file_id}/delete")
@@ -512,7 +512,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         try:
             if upload is None or not getattr(upload, "filename", ""):
                 raise AppError("请选择文件")
-            svc.save_library_file(db, user, svc.roles_of(db, user.id), settings.upload_dir, department, upload.filename, upload.file.read())
+            svc.save_library_file(db, user, svc.roles_of(db, user.id), settings.upload_dir, department, upload.filename, upload.file)
         except AppError as exc:
             return fail(request, back, exc)
         flash(request, "资料已放入部门库")
@@ -726,7 +726,8 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         borrow_rows = [row for row in db.scalars(select(Borrow).order_by(Borrow.created_at.desc()).limit(100)).all() if svc.can_view_borrow(user, roles, row)]
         names = svc.name_map(db, {row.user_id for row in borrow_rows})
         asset_names = {row.id: row.name for row in asset_rows}
-        assets = [{"id": row.id, "name": row.name, "category": row.category, "total_qty": row.total_qty, "available": svc.available_qty(db, row), "location": row.location, "description": row.description} for row in asset_rows]
+        available = svc.available_quantities(db, asset_rows)
+        assets = [{"id": row.id, "name": row.name, "category": row.category, "total_qty": row.total_qty, "available": available[row.id], "location": row.location, "description": row.description} for row in asset_rows]
         borrows = [{"id": row.id, "asset": asset_names.get(row.asset_id, "资产"), "user": names.get(row.user_id, "已注销"), "qty": row.qty, "reason": row.reason, "status": row.status, "due_at": svc.fmt_dt(row.due_at), "comment": row.review_comment, "can_review": can_approve_borrow(user.is_admin, roles) and row.status == "pending", "can_return": row.status == "approved" and (row.user_id == user.id or can_approve_borrow(user.is_admin, roles))} for row in borrow_rows]
         return render(request, "assets.html", shell(request, db, user, "assets", assets=assets, borrows=borrows))
 
@@ -808,18 +809,10 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
                 qr_files = [file for file in form.getlist("qr") if isinstance(file, UploadFile) and file.filename]
                 if not 1 <= len(invoices) <= claims_svc.MAX_INVOICES or len(qr_files) != 1:
                     raise AppError("请上传 1 到 10 份发票和一张收款二维码")
-                payloads = []
-                total = 0
-                for file in invoices + qr_files:
-                    data = await file.read(svc.MAX_FILE_SIZE + 1)
-                    if len(data) > svc.MAX_FILE_SIZE:
-                        raise AppError("单个文件不能超过 20MB")
-                    total += len(data)
-                    if total > claims_svc.MAX_TOTAL_SIZE:
-                        raise AppError("本次报销附件合计不能超过 50MB")
-                    payloads.append((file.filename, data))
-                claims_svc.request_reimbursement(db, user, settings.upload_dir, str(form.get("amount") or ""),
-                                                str(form.get("reason") or ""), payloads[:-1], payloads[-1])
+                claims_svc.request_reimbursement(
+                    db, user, settings.upload_dir, str(form.get("amount") or ""), str(form.get("reason") or ""),
+                    [(file.filename, file.file) for file in invoices], (qr_files[0].filename, qr_files[0].file),
+                )
             except AppError as exc:
                 return fail(request, "/finance", exc)
         flash(request, "报销已提交")
@@ -955,7 +948,21 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
 
     @app.post("/profile/password")
     async def profile_password(request: Request, db: Session = Depends(get_db)):
-        return await simple_post(request, db, "/profile", lambda actor, _roles, form: svc.change_password(db, actor, str(form.get("current") or ""), str(form.get("new_password") or ""), str(form.get("confirm") or "")), "密码已更新")
+        form = await form_of(request)
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        if not csrf_ok(request, str(form.get("csrf") or "")):
+            flash(request, "页面已过期，请刷新后重试", "error")
+            return redirect("/profile")
+        new_password = str(form.get("new_password") or "")
+        try:
+            svc.change_password(db, user, str(form.get("current") or ""), new_password, str(form.get("confirm") or ""))
+        except AppError as exc:
+            return fail(request, "/profile", exc)
+        request.session["warn_password"] = bool(user.is_admin and same_secret(new_password, settings.admin_password))
+        flash(request, "密码已更新")
+        return redirect("/profile")
 
     @app.post("/profile/club")
     async def profile_club(request: Request, db: Session = Depends(get_db)):
