@@ -49,6 +49,15 @@ class User(Base):
     department: Mapped[str] = mapped_column(String(40), default="")
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
 
 

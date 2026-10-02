@@ -61,6 +61,7 @@ def init_db(settings: Settings) -> None:
     try:
         _add_column(db, "users", "college", "VARCHAR(40) DEFAULT ''")
         _add_column(db, "users", "class_name", "VARCHAR(40) DEFAULT ''")
+        _add_column(db, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
         _add_column(db, "projects", "department", "VARCHAR(40) DEFAULT ''")
         _add_column(db, "activities", "department", "VARCHAR(40) DEFAULT ''")
         db.commit()

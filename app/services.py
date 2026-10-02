@@ -24,6 +24,7 @@ from app.models import (
     LedgerEntry,
     LibraryFile,
     Meeting,
+    PasswordReset,
     Project,
     ProjectFile,
     ProjectMember,
@@ -522,14 +523,40 @@ def set_roles(db: Session, actor: User, user_id: int, selected: list[str]) -> No
     forget_cached_roles(db, user.id)
 
 
-def change_password(db: Session, user: User, current: str, new_password: str, confirm: str) -> None:
-    if not verify_password(current, user.password_hash):
+TEMP_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+
+def generate_temporary_password() -> str:
+    return "".join(secrets.choice(TEMP_PASSWORD_ALPHABET) for _ in range(12))
+
+
+def reset_member_password(db: Session, actor: User, user_id: int) -> str:
+    if not actor.is_admin:
+        raise AppError("只有超级管理员可以重置密码")
+    user = db.get(User, user_id)
+    if user is None or user.is_admin:
+        raise AppError("不能重置超级管理员")
+    if user.status not in {"active", "disabled"}:
+        raise AppError("只能重置已启用或已停用成员的密码")
+    temporary = generate_temporary_password()
+    user.password_hash = hash_password(temporary)
+    user.must_change_password = True
+    db.add(PasswordReset(actor_id=actor.id, target_id=user.id))
+    db.commit()
+    return temporary
+
+
+def change_password(db: Session, user: User, current: str, new_password: str, confirm: str, *, skip_current: bool = False) -> None:
+    if not skip_current and not verify_password(current, user.password_hash):
         raise AppError("当前密码不正确")
     if new_password != confirm:
         raise AppError("两次输入的新密码不一致")
     if len(new_password) < 6 or len(new_password) > 64:
         raise AppError("新密码需要 6 到 64 位")
+    if skip_current and verify_password(new_password, user.password_hash):
+        raise AppError("新密码不能与临时密码相同")
     user.password_hash = hash_password(new_password)
+    user.must_change_password = False
     db.commit()
 
 
