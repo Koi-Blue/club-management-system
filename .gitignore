@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+data/
+*.db
+.DS_Store
+backups/
+tests/browser/node_modules/

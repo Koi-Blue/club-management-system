@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}请假 · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>请假</h1><p>提交后由本部门部长，或社长、副社长、指导老师审批。</p></div></header>
+<section class="grid two">
+  <article class="card">
+    {% if items %}
+    <div class="list">
+      {% for item in items %}
+      <article class="item">
+        <h3>{{ item.user }}</h3>
+        <p>{{ item.start_on }} 至 {{ item.end_on }}</p>
+        <p>{{ item.reason }}</p>
+        <p class="muted"><span class="badge badge-{{ item.status }}">{{ leave_status[item.status] }}</span> {{ item.comment }}</p>
+        {% if item.can_review %}
+        <form class="actions" method="post" action="/leave/{{ item.id }}/review">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input name="comment" placeholder="意见">
+          <button class="primary" name="decision" value="approved" type="submit">通过</button>
+          <button class="danger" name="decision" value="rejected" type="submit">驳回</button>
+        </form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有请假记录。</p>{% endif %}
+  </article>
+  <form class="card stack" method="post" action="/leave">
+    <h2>申请请假</h2>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="field"><span>开始</span><input name="start_on" type="date" required></label>
+    <label class="field"><span>结束</span><input name="end_on" type="date" required></label>
+    <label class="field"><span>事由</span><input name="reason" required></label>
+    <button class="primary" type="submit">提交</button>
+  </form>
+</section>
+{% endblock %}

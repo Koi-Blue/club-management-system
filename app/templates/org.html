@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}组织架构 · {{ club_name }}{% endblock %}
+{% macro people(node) %}
+  <div class="people">
+    {% for person in node.people %}
+    <details class="person">
+      <summary>{{ person.real_name }}</summary>
+      <div class="person-meta"><span>{{ person.class_name or "未填班级" }}</span><span>{{ person.college }}</span>
+        {% if person.phone %}<a href="tel:{{ person.phone }}">{{ person.phone }}</a>{% else %}<span>电话不公开</span>{% endif %}
+      </div>
+    </details>
+    {% else %}<p class="empty">暂未分配人员</p>{% endfor %}
+  </div>
+{% endmacro %}
+{% macro branch(node) %}
+<li>
+  <article class="org-node"><h3>{{ node.title }} <span class="count">{{ node.people|length }}</span></h3>{{ people(node) }}</article>
+  {% if node.children %}<ul>{% for child in node.children %}{{ branch(child) }}{% endfor %}</ul>{% endif %}
+</li>
+{% endmacro %}
+{% block content %}
+<header class="page-head"><div><h1>组织架构</h1><p>从上向下查看上下级关系，同级职务并排显示。技术成员归入对应方向负责人下；点击姓名查看资料。</p></div></header>
+<p class="muted org-hint">左右滚动架构图可查看全部分支。</p>
+<div class="org-layout">
+  <section class="card org-chart" aria-label="社团上下级架构" tabindex="0"><ul class="org-tree">{% for node in tree %}{{ branch(node) }}{% endfor %}</ul></section>
+  <aside class="org-independent" aria-label="独立职务">
+    <p class="muted">独立职务 · 不参与上下级架构</p>
+    {% for node in independent %}<article class="card"><h2>{{ node.title }} <span class="count">{{ node.people|length }}</span></h2>{{ people(node) }}</article>{% endfor %}
+  </aside>
+</div>
+{% endblock %}
