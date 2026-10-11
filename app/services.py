@@ -759,7 +759,26 @@ def delete_library_file(db: Session, user: User, roles: list[str], upload_dir: s
     db.commit()
 
 
-def create_asset(db: Session, user: User, roles: list[str], name: str, category: str, total_qty: int, location: str, description: str) -> None:
+ASSET_KINDS = {"instrument": "仪器", "consumable": "耗材"}
+
+
+def asset_kind_of(asset: Asset) -> str:
+    kind = (getattr(asset, "kind", None) or "").strip()
+    if kind not in ASSET_KINDS:
+        return "instrument"
+    return kind
+
+
+def normalize_asset_kind(kind: str) -> str:
+    value = (kind or "").strip()
+    if not value:
+        return "instrument"
+    if value not in ASSET_KINDS:
+        raise AppError("请选择仪器或耗材")
+    return value
+
+
+def create_asset(db: Session, user: User, roles: list[str], name: str, category: str, total_qty: int, location: str, description: str, kind: str = "") -> None:
     if not (user.is_admin or has_role(roles, "社长", "副社长") or managed_departments(roles)):
         raise AppError("没有权限登记资产")
     if total_qty < 1 or total_qty > 100000:
@@ -767,6 +786,7 @@ def create_asset(db: Session, user: User, roles: list[str], name: str, category:
     db.add(Asset(
         name=require_text(name, "资产名称", 80),
         category=optional_text(category, "分类", 40) or "物资",
+        kind=normalize_asset_kind(kind),
         total_qty=total_qty,
         location=optional_text(location, "存放位置", 80),
         description=optional_text(description, "说明", 1000),
@@ -775,6 +795,7 @@ def create_asset(db: Session, user: User, roles: list[str], name: str, category:
 
 
 def borrowed_qty(db: Session, asset_id: int) -> int:
+    # 仪器借用中、耗材已领用都保持 approved，继续占用库存。耗材不归还。
     used = db.scalar(select(func.coalesce(func.sum(Borrow.qty), 0)).where(Borrow.asset_id == asset_id, Borrow.status == "approved"))
     return int(used or 0)
 
@@ -811,6 +832,8 @@ def request_borrow(db: Session, user: User, asset_id: int, qty: int, reason: str
     asset = db.get(Asset, asset_id)
     if asset is None:
         raise AppError("找不到这项资产")
+    if asset_kind_of(asset) != "instrument":
+        raise AppError("耗材不能借用，请走领用")
     if qty < 1:
         raise AppError("借用数量至少为 1")
     due_at = parse_local_dt(due_raw, "预计归还时间")
@@ -818,35 +841,72 @@ def request_borrow(db: Session, user: User, asset_id: int, qty: int, reason: str
         raise AppError("预计归还时间需要晚于现在")
     if qty > available_qty(db, asset):
         raise AppError("可借数量不足")
-    db.add(Borrow(asset_id=asset.id, user_id=user.id, qty=qty, reason=optional_text(reason, "借用事由", 200), status="pending", due_at=due_at))
+    db.add(Borrow(
+        asset_id=asset.id,
+        user_id=user.id,
+        qty=qty,
+        reason=optional_text(reason, "借用事由", 200),
+        status="pending",
+        due_at=due_at,
+        purpose="borrow",
+    ))
     db.commit()
     invalidate_nav_badges(db)
 
 
-def review_borrow(db: Session, user: User, roles: list[str], borrow_id: int, decision: str, comment: str) -> None:
-    if not can_approve_borrow(user.is_admin, roles):
-        raise AppError("没有权限审批借用")
+def request_issue(db: Session, user: User, asset_id: int, qty: int, reason: str) -> None:
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise AppError("找不到这项资产")
+    if asset_kind_of(asset) != "consumable":
+        raise AppError("仪器请走借用，并填写预计归还时间")
+    if qty < 1:
+        raise AppError("领用数量至少为 1")
+    if qty > available_qty(db, asset):
+        raise AppError("可领数量不足")
+    db.add(Borrow(
+        asset_id=asset.id,
+        user_id=user.id,
+        qty=qty,
+        reason=optional_text(reason, "领用事由", 200),
+        status="pending",
+        due_at=None,
+        purpose="issue",
+    ))
+    db.commit()
+    invalidate_nav_badges(db)
+
+
+def review_borrow(db: Session, user: User, roles: list[str], borrow_id: int, decision: str, comment: str) -> str:
     row = db.get(Borrow, borrow_id)
+    purpose = (row.purpose if row is not None else None) or "borrow"
+    word = "领用" if purpose == "issue" else "借用"
+    if not can_approve_borrow(user.is_admin, roles):
+        raise AppError(f"没有权限审批{word}")
     if row is None or row.status != "pending":
-        raise AppError("这条借用申请不能审批")
+        raise AppError(f"这条{word}申请不能审批")
     if decision not in {"approved", "rejected"}:
         raise AppError("审批结果不正确")
     asset = db.get(Asset, row.asset_id)
     if decision == "approved":
+        stock = "可领" if purpose == "issue" else "可借"
         if asset is None or row.qty > available_qty(db, asset):
-            raise AppError("可借数量不足，无法通过")
+            raise AppError(f"{stock}数量不足，无法通过")
         row.approved_at = utcnow()
     row.status = decision
     row.reviewer_id = user.id
     row.review_comment = optional_text(comment, "审批意见", 200)
     db.commit()
     invalidate_nav_badges(db)
+    return purpose
 
 
 def return_borrow(db: Session, user: User, roles: list[str], borrow_id: int) -> None:
     row = db.get(Borrow, borrow_id)
     if row is None or row.status != "approved":
         raise AppError("这条记录不在借用中")
+    if (row.purpose or "borrow") == "issue":
+        raise AppError("耗材无需归还")
     if user.id != row.user_id and not can_approve_borrow(user.is_admin, roles):
         raise AppError("没有权限登记归还")
     row.status = "returned"

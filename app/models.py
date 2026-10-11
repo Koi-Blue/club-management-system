@@ -127,6 +127,7 @@ class Asset(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80))
     category: Mapped[str] = mapped_column(String(40), default="物资")
+    kind: Mapped[str] = mapped_column(String(20), default="instrument", server_default="'instrument'")
     total_qty: Mapped[int] = mapped_column(Integer)
     location: Mapped[str] = mapped_column(String(80), default="")
     description: Mapped[str] = mapped_column(Text, default="")
@@ -143,10 +144,11 @@ class Borrow(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     review_comment: Mapped[str] = mapped_column(String(200), default="")
-    due_at: Mapped[datetime] = mapped_column(UtcDateTime())
+    due_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
     approved_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     returned_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    purpose: Mapped[str] = mapped_column(String(20), default="borrow", server_default="'borrow'")
 
 
 class Activity(Base):

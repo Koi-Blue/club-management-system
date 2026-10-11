@@ -59,6 +59,7 @@ import app.reimbursements as claims_svc
 PROJECT_STATUS = {"draft": "草稿", "pending": "待审批", "approved": "进行中", "rejected": "已驳回", "archived": "已归档"}
 ACTIVITY_STATUS = {"draft": "待发放", "published": "已发放", "rejected": "已驳回", "closed": "已结束"}
 BORROW_STATUS = {"pending": "待审批", "approved": "借用中", "rejected": "已驳回", "returned": "已归还"}
+ISSUE_STATUS = {"pending": "待审批", "approved": "已领用", "rejected": "已驳回", "returned": "已归还"}
 USER_STATUS = {"pending": "待审批", "active": "已启用", "rejected": "已驳回", "disabled": "已停用", "deleted": "已注销"}
 LEAVE_STATUS = {"pending": "待审批", "approved": "已通过", "rejected": "已驳回"}
 CLAIM_STATUS = {"pending": "待审批", "approved": "待付款", "rejected": "已驳回", "paid": "已付款"}
@@ -749,9 +750,41 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         names = svc.name_map(db, {row.user_id for row in borrow_rows})
         asset_names = {row.id: row.name for row in asset_rows}
         available = svc.available_quantities(db, asset_rows)
-        assets = [{"id": row.id, "name": row.name, "category": row.category, "total_qty": row.total_qty, "available": available[row.id], "location": row.location, "description": row.description} for row in asset_rows]
-        borrows = [{"id": row.id, "asset": asset_names.get(row.asset_id, "资产"), "user": names.get(row.user_id, "已注销"), "qty": row.qty, "reason": row.reason, "status": row.status, "due_at": svc.fmt_dt(row.due_at), "comment": row.review_comment, "can_review": can_approve_borrow(user.is_admin, roles) and row.status == "pending", "can_return": row.status == "approved" and (row.user_id == user.id or can_approve_borrow(user.is_admin, roles))} for row in borrow_rows]
-        return render(request, "assets.html", shell(request, db, user, "assets", assets=assets, borrows=borrows))
+        assets = []
+        for row in asset_rows:
+            kind = svc.asset_kind_of(row)
+            assets.append({
+                "id": row.id,
+                "name": row.name,
+                "kind": kind,
+                "kind_label": svc.ASSET_KINDS[kind],
+                "category": row.category,
+                "total_qty": row.total_qty,
+                "available": available[row.id],
+                "location": row.location,
+                "description": row.description,
+            })
+        instruments = [item for item in assets if item["kind"] == "instrument"]
+        consumables = [item for item in assets if item["kind"] == "consumable"]
+        borrows = []
+        for row in borrow_rows:
+            purpose = row.purpose or "borrow"
+            is_issue = purpose == "issue"
+            borrows.append({
+                "id": row.id,
+                "asset": asset_names.get(row.asset_id, "资产"),
+                "flow": "领用" if is_issue else "借用",
+                "user": names.get(row.user_id, "已注销"),
+                "qty": row.qty,
+                "reason": row.reason,
+                "status": row.status,
+                "status_label": ISSUE_STATUS.get(row.status, row.status) if is_issue else BORROW_STATUS.get(row.status, row.status),
+                "due_at": "" if is_issue else svc.fmt_dt(row.due_at),
+                "comment": row.review_comment,
+                "can_review": can_approve_borrow(user.is_admin, roles) and row.status == "pending",
+                "can_return": (not is_issue) and row.status == "approved" and (row.user_id == user.id or can_approve_borrow(user.is_admin, roles)),
+            })
+        return render(request, "assets.html", shell(request, db, user, "assets", assets=assets, instruments=instruments, consumables=consumables, borrows=borrows))
 
     async def simple_post(request: Request, db: Session, back: str, action, message: str):
         form = await form_of(request)
@@ -762,25 +795,33 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             flash(request, "页面已过期，请刷新后重试", "error")
             return redirect(back)
         try:
-            action(user, svc.roles_of(db, user.id), form)
+            outcome = action(user, svc.roles_of(db, user.id), form)
         except AppError as exc:
             return fail(request, back, exc)
         except ValueError:
             return fail(request, back, AppError("数字填写不正确"))
-        flash(request, message)
+        flash(request, outcome if isinstance(outcome, str) else message)
         return redirect(back)
 
     @app.post("/assets")
     async def asset_create(request: Request, db: Session = Depends(get_db)):
-        return await simple_post(request, db, "/assets", lambda actor, roles, form: svc.create_asset(db, actor, roles, str(form.get("name") or ""), str(form.get("category") or ""), int(str(form.get("total_qty") or "0")), str(form.get("location") or ""), str(form.get("description") or "")), "资产已登记")
+        return await simple_post(request, db, "/assets", lambda actor, roles, form: svc.create_asset(db, actor, roles, str(form.get("name") or ""), str(form.get("category") or ""), int(str(form.get("total_qty") or "0")), str(form.get("location") or ""), str(form.get("description") or ""), str(form.get("kind") or "")), "资产已登记")
 
     @app.post("/borrows")
     async def borrow_create(request: Request, db: Session = Depends(get_db)):
         return await simple_post(request, db, "/assets", lambda actor, _roles, form: svc.request_borrow(db, actor, int(str(form.get("asset_id") or "0")), int(str(form.get("qty") or "0")), str(form.get("reason") or ""), str(form.get("due_at") or "")), "借用申请已提交")
 
+    @app.post("/issues")
+    async def issue_create(request: Request, db: Session = Depends(get_db)):
+        return await simple_post(request, db, "/assets", lambda actor, _roles, form: svc.request_issue(db, actor, int(str(form.get("asset_id") or "0")), int(str(form.get("qty") or "0")), str(form.get("reason") or "")), "领用申请已提交")
+
     @app.post("/borrows/{borrow_id}/review")
     async def borrow_review(borrow_id: int, request: Request, db: Session = Depends(get_db)):
-        return await simple_post(request, db, "/assets", lambda actor, roles, form: svc.review_borrow(db, actor, roles, borrow_id, str(form.get("decision") or ""), str(form.get("comment") or "")), "借用审批已保存")
+        def review(actor, roles, form):
+            purpose = svc.review_borrow(db, actor, roles, borrow_id, str(form.get("decision") or ""), str(form.get("comment") or ""))
+            return "领用审批已保存" if purpose == "issue" else "借用审批已保存"
+
+        return await simple_post(request, db, "/assets", review, "借用审批已保存")
 
     @app.post("/borrows/{borrow_id}/return")
     async def borrow_return(borrow_id: int, request: Request, db: Session = Depends(get_db)):
@@ -947,7 +988,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if can_approve_borrow(user.is_admin, roles):
             for row in db.scalars(select(Borrow).where(Borrow.status == "pending")).all():
                 asset = db.get(Asset, row.asset_id)
-                items.append({"href": "/assets", "kind": "借用", "title": asset.name if asset else "资产", "meta": f"{row.qty} 件"})
+                items.append({"href": "/assets", "kind": "领用" if (row.purpose or "borrow") == "issue" else "借用", "title": asset.name if asset else "资产", "meta": f"{row.qty} 件"})
         if sees_finance(user.is_admin, roles):
             for row in db.scalars(select(Reimbursement).where(Reimbursement.status == "pending")).all():
                 items.append({"href": "/finance", "kind": "报销", "title": svc.money(row.amount_cents), "meta": row.reason})

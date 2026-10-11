@@ -55,6 +55,99 @@ def _add_column(db: Session, table: str, name: str, ddl: str) -> None:
         db.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 
 
+def _relax_borrow_due_at() -> None:
+    """SQLite 不能直接去掉 NOT NULL。旧库的预计归还时间改为可空，耗材领用才不必填写。"""
+    if engine is None or not inspect(engine).has_table("borrows"):
+        return
+    with engine.connect() as conn:
+        info = list(conn.execute(text("PRAGMA table_info(borrows)")).mappings())
+        index_rows = conn.execute(text(
+            "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='borrows' AND sql IS NOT NULL"
+        )).all()
+    due = next((row for row in info if row["name"] == "due_at"), None)
+    if due is None or not int(due["notnull"]):
+        return
+    names = {row["name"] for row in info}
+    required = {
+        "id", "asset_id", "user_id", "qty", "reason", "status",
+        "reviewer_id", "review_comment", "due_at", "created_at",
+        "approved_at", "returned_at",
+    }
+    missing = sorted(required - names)
+    if missing:
+        raise RuntimeError("borrows 表缺少字段，无法迁移预计归还时间：" + "、".join(missing))
+    purpose_expr = "purpose" if "purpose" in names else "'borrow'"
+    index_sql = [row[0] for row in index_rows if row[0]]
+    raw = engine.raw_connection()
+    cur = raw.cursor()
+    try:
+        cur.execute("PRAGMA foreign_keys=OFF")
+        if cur.execute("PRAGMA foreign_keys").fetchone()[0] != 0:
+            raise RuntimeError("无法暂时关闭外键检查，停止迁移借用表")
+        cur.execute("BEGIN")
+        cur.execute("DROP TABLE IF EXISTS borrows__due_nullable")
+        cur.execute(
+            """
+            CREATE TABLE borrows__due_nullable (
+                id INTEGER NOT NULL PRIMARY KEY,
+                asset_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                qty INTEGER NOT NULL,
+                reason VARCHAR(200) NOT NULL DEFAULT '',
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                reviewer_id INTEGER,
+                review_comment VARCHAR(200) NOT NULL DEFAULT '',
+                due_at DATETIME,
+                created_at DATETIME NOT NULL,
+                approved_at DATETIME,
+                returned_at DATETIME,
+                purpose VARCHAR(20) NOT NULL DEFAULT 'borrow',
+                FOREIGN KEY(asset_id) REFERENCES assets (id),
+                FOREIGN KEY(user_id) REFERENCES users (id),
+                FOREIGN KEY(reviewer_id) REFERENCES users (id)
+            )
+            """
+        )
+        cur.execute(
+            f"""
+            INSERT INTO borrows__due_nullable (
+                id, asset_id, user_id, qty, reason, status, reviewer_id, review_comment,
+                due_at, created_at, approved_at, returned_at, purpose
+            )
+            SELECT
+                id, asset_id, user_id, qty,
+                COALESCE(reason, ''),
+                COALESCE(status, 'pending'),
+                reviewer_id,
+                COALESCE(review_comment, ''),
+                due_at,
+                COALESCE(created_at, CURRENT_TIMESTAMP),
+                approved_at,
+                returned_at,
+                COALESCE({purpose_expr}, 'borrow')
+            FROM borrows
+            """
+        )
+        cur.execute("DROP TABLE borrows")
+        cur.execute("ALTER TABLE borrows__due_nullable RENAME TO borrows")
+        for statement in index_sql:
+            cur.execute(statement)
+        cur.execute("COMMIT")
+    except Exception:
+        try:
+            raw.dbapi_connection.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            raw.cursor().execute("PRAGMA foreign_keys=ON")
+        finally:
+            raw.close()
+    inspect(engine).clear_cache()
+    engine.dispose()
+
+
 def init_db(settings: Settings) -> None:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -64,7 +157,14 @@ def init_db(settings: Settings) -> None:
         _add_column(db, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
         _add_column(db, "projects", "department", "VARCHAR(40) DEFAULT ''")
         _add_column(db, "activities", "department", "VARCHAR(40) DEFAULT ''")
+        _add_column(db, "assets", "kind", "VARCHAR(20) NOT NULL DEFAULT 'instrument'")
+        _add_column(db, "borrows", "purpose", "VARCHAR(20) NOT NULL DEFAULT 'borrow'")
         db.commit()
+    finally:
+        db.close()
+    _relax_borrow_due_at()
+    db = SessionLocal()
+    try:
         stored_name = db.get(Setting, "club_name")
         if stored_name is None:
             db.add(Setting(key="club_name", value=settings.club_name))
