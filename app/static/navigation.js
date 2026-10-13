@@ -171,6 +171,19 @@
   }
 
   document.addEventListener('click', event => {
+    const anchor = event.target.closest('a[href^="#"]');
+    if (anchor && main.contains(anchor)) {
+      const id = decodeURIComponent(anchor.getAttribute('href').slice(1));
+      const target = id ? main.querySelector(`#${CSS.escape(id)}`) : null;
+      if (target) {
+        event.preventDefault();
+        target.scrollIntoView({ block: 'start' });
+        const next = new URL(location.href);
+        next.hash = id;
+        history.replaceState(history.state, '', next);
+        return;
+      }
+    }
     const link = event.target.closest('a[href]');
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ||
         link.hasAttribute('download') || (link.target && link.target !== '_self') ||

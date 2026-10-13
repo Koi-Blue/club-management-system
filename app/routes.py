@@ -143,7 +143,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         user = active_user(request, db)
         if user is None:
             return None, redirect("/login")
-        if user.must_change_password and request.url.path not in {"/profile", "/profile/password"}:
+        if user.must_change_password and request.url.path not in {"/profile", "/profile/password", "/guide"}:
             flash(request, "请先设置新密码，完成前不能使用其他功能", "error")
             return None, redirect("/profile")
         return user, None
@@ -205,6 +205,13 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if current:
             return redirect("/profile" if current.must_change_password else "/")
         return render(request, name, {"csrf": ensure_csrf(request), "flash": request.session.pop("flash", None), "club_name": svc.club_name(db)})
+
+    @app.get("/guide")
+    def guide_page(request: Request, db: Session = Depends(get_db)):
+        user = active_user(request, db)
+        if user is None:
+            return render(request, "guide_public.html", {"club_name": svc.club_name(db)})
+        return render(request, "guide.html", shell(request, db, user, "guide"))
 
     @app.get("/healthz")
     def healthz():

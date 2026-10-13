@@ -54,7 +54,15 @@ p { line-height: 1.65; margin: 0.35rem 0; }
   color: #1c1e22; font-weight: 700; font-size: 1rem;
   box-shadow: 0 8px 16px rgba(28, 30, 34, 0.08);
 }
+.brand-name { min-width: 0; flex: 1; }
 .brand strong { display: block; font-size: 0.92rem; line-height: 1.35; letter-spacing: -0.03em; }
+.guide-button {
+  width: 1.7rem; height: 1.7rem; border-radius: 999px; border: 1px solid var(--line);
+  display: grid; place-items: center; flex: none; color: var(--muted); background: #fff;
+}
+.guide-button svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+.guide-button:hover, .guide-button[aria-current="page"] { color: var(--ink); border-color: #c5c8ce; background: var(--accent-soft); }
+.guide-auth { position: fixed; top: 0.85rem; right: 0.85rem; z-index: 2; text-decoration: none; }
 .brand small { color: var(--muted); font-size: 0.75rem; }
 .nav { min-height: 0; flex: 1; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 0.12rem; overflow: auto; padding-right: 0.15rem; }
 .nav p {
@@ -283,6 +291,9 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
   .main[data-swipe-enabled="true"] { touch-action: pan-y pinch-zoom; }
   .main input, .main textarea, .main select, .main table, .main pre, .main .org-chart { touch-action: auto; }
   .main table { display: block; max-width: 100%; overflow-x: auto; }
+  .guide-layout { grid-template-columns: minmax(0, 1fr); }
+  .guide-toc { position: static; flex-direction: row; overflow-x: auto; gap: 0.35rem; }
+  .guide-toc a { flex: 0 0 auto; white-space: nowrap; }
   .page-head { align-items: flex-start; flex-wrap: wrap; }
   .page-head h1 { font-size: 1.45rem; }
   .person-line em { margin-left: 0; }
@@ -320,6 +331,22 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .prose blockquote { border-left: 3px solid #b9bec7; margin-left: 0; padding-left: 1rem; color: var(--muted); }
 .prose pre code { white-space: pre; }
 .prose li + li { margin-top: 0.2rem; }
+.guide-layout { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 1.1rem; align-items: start; }
+.guide-toc {
+  position: sticky; top: 0; display: flex; flex-direction: column; gap: 0.1rem;
+  padding: 0.7rem 0.75rem; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+}
+.guide-toc a { color: var(--muted); font-size: 0.86rem; padding: 0.22rem 0.2rem; border-radius: 0.4rem; }
+.guide-toc a:hover { color: var(--ink); background: var(--accent-soft); }
+.guide-section { scroll-margin-top: 0.4rem; }
+.guide-section + .guide-section { margin-top: 0.85rem; }
+.guide-section h2 { margin-bottom: 0.45rem; }
+.guide-section ol { margin: 0.35rem 0 0; padding-left: 1.15rem; }
+.guide-section li { margin: 0.28rem 0; }
+.guide-figure { margin: 0.7rem 0 0; }
+.guide-figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.guide-public { max-width: 980px; margin: 0 auto; padding: 1.2rem 1rem 2.5rem; }
+.guide-public-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .comment-section { margin-top: 1rem; }
 .checkbox-field { display: flex; gap: 0.5rem; align-items: center; }
 .checkbox-field input { width: auto; }

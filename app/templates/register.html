@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>注册 · {{ club_name }}</title>
   <link rel="icon" href="/static/favicon.svg">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=20261013-guide">
 </head>
 <body>
+  <a class="guide-button guide-auth" href="/guide" aria-label="系统使用说明书" title="系统使用说明书">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="8" r="0.9" fill="currentColor" stroke="none"/></svg>
+  </a>
   <div class="auth-body">
     <section class="auth-card">
       <form class="card stack auth-form" method="post" action="/register">

@@ -5,18 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ club_name }}{% endblock %}</title>
   <link rel="icon" href="/static/favicon.svg">
-  <link rel="stylesheet" href="/static/style.css?v=20261013-kind">
-  <script src="/static/navigation.js?v=20260926-nav1" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=20261013-guide">
+  <script src="/static/navigation.js?v=20261013-guide" defer></script>
 </head>
 <body>
   <div class="layout" data-user-id="{{ me.id }}" data-shell-version="20260926-nav1">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">社</div>
-        <div>
+        <div class="brand-name">
           <strong>{{ club_name }}</strong>
           <small>运营与资料</small>
         </div>
+        <a class="guide-button" href="/guide" data-page-link aria-label="系统使用说明书" title="系统使用说明书"{% if nav == 'guide' %} aria-current="page"{% endif %}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="8" r="0.9" fill="currentColor" stroke="none"/></svg>
+        </a>
       </div>
       <nav class="nav" aria-label="模块导航">
         <p>工作台</p>
