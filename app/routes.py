@@ -397,10 +397,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if bounce:
             return bounce
         roles = svc.roles_of(db, user.id)
-        if "荣誉社长" in roles or user.is_admin:
-            choices = list(DEPARTMENTS)
-        else:
-            choices = svc.visible_library_departments(user, roles) or ([user.department] if user.department in DEPARTMENTS else [])
+        choices = svc.project_department_choices(user, roles)
         people = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.real_name)).all()
         return render(request, "project_new.html", shell(request, db, user, "projects", choices=choices, people=[{"id": row.id, "real_name": row.real_name, "class_name": row.class_name, "checked": row.id == user.id} for row in people]))
 
@@ -436,11 +433,15 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return redirect("/projects")
         files = db.scalars(select(ProjectFile).where(ProjectFile.project_id == project.id).order_by(ProjectFile.uploaded_at.desc())).all()
         names = svc.name_map(db, {project.leader_id, project.reviewer_id or 0, *(row.uploader_id for row in files)})
+        manageable = svc.can_manage_project(db, user, roles, project)
         detail = {
             "id": project.id, "title": project.title, "summary": project.summary, "department": project.department,
             "status": project.status, "leader": names.get(project.leader_id, "已注销"), "reviewer": names.get(project.reviewer_id or 0, ""),
             "review_comment": project.review_comment, "updated_at": svc.fmt_dt(project.updated_at),
-            "can_submit": svc.can_manage_project(db, user, roles, project),
+            "can_submit": manageable,
+            "can_edit": manageable,
+            "can_delete": manageable,
+            "can_withdraw": svc.can_withdraw_project(db, user, project),
             "can_review": can_approve_project(user.is_admin, roles) and project.status == "pending",
             "can_archive": project.status == "approved" and (svc.project_related(db, user, project) or can_approve_project(user.is_admin, roles)),
             "can_upload": svc.project_related(db, user, project) or sees_all_projects(roles),
@@ -449,7 +450,33 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         }
         return render(request, "project_detail.html", shell(request, db, user, "projects", project=detail))
 
-    async def project_action(project_id: int, request: Request, db: Session, action, message: str):
+    @app.get("/projects/{project_id}/edit")
+    def project_edit_page(project_id: int, request: Request, db: Session = Depends(get_db)):
+        user, bounce = guard(request, db)
+        if bounce:
+            return bounce
+        project = db.get(Project, project_id)
+        roles = svc.roles_of(db, user.id)
+        if project is None or not svc.can_view_project(db, user, roles, project):
+            if "flash" not in request.session:
+                flash(request, "找不到这个立项，或你没有查看权限", "error")
+            return redirect("/projects")
+        if not svc.can_manage_project(db, user, roles, project):
+            if not svc.project_related(db, user, project):
+                flash(request, "没有权限修改这个立项", "error")
+            else:
+                flash(request, "当前状态不能修改立项", "error")
+            return redirect(f"/projects/{project_id}")
+        member_ids = set(svc.project_member_ids(db, project.id))
+        people = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.real_name)).all()
+        return render(request, "project_edit.html", shell(
+            request, db, user, "projects",
+            project={"id": project.id, "title": project.title, "summary": project.summary, "department": project.department},
+            choices=svc.project_department_choices(user, roles, project.department),
+            people=[{"id": row.id, "real_name": row.real_name, "class_name": row.class_name, "checked": row.id in member_ids} for row in people],
+        ))
+
+    async def project_action(project_id: int, request: Request, db: Session, action, message: str, *, error_to: str | None = None, success_to: str | None = None):
         form = await form_of(request)
         user, bounce = guard(request, db)
         back = f"/projects/{project_id}"
@@ -457,17 +484,36 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return bounce
         if not csrf_ok(request, str(form.get("csrf") or "")):
             flash(request, "页面已过期，请刷新后重试", "error")
-            return redirect(back)
+            return redirect(error_to or back)
         try:
             action(user, svc.roles_of(db, user.id), form)
         except AppError as exc:
-            return fail(request, back, exc)
+            return fail(request, error_to or back, exc)
         flash(request, message)
-        return redirect(back)
+        return redirect(success_to or back)
+
+    @app.post("/projects/{project_id}/edit")
+    async def project_update(project_id: int, request: Request, db: Session = Depends(get_db)):
+        def action(actor, roles, form):
+            try:
+                member_ids = [int(item) for item in form.getlist("members")]
+            except ValueError:
+                raise AppError("关联成员不正确") from None
+            svc.update_project(db, actor, roles, project_id, str(form.get("title") or ""), str(form.get("summary") or ""), str(form.get("department") or ""), member_ids)
+
+        return await project_action(project_id, request, db, action, "立项已保存", error_to=f"/projects/{project_id}/edit")
 
     @app.post("/projects/{project_id}/submit")
     async def project_submit(project_id: int, request: Request, db: Session = Depends(get_db)):
         return await project_action(project_id, request, db, lambda actor, roles, _form: svc.submit_project(db, actor, roles, project_id), "已提交审批")
+
+    @app.post("/projects/{project_id}/withdraw")
+    async def project_withdraw(project_id: int, request: Request, db: Session = Depends(get_db)):
+        return await project_action(project_id, request, db, lambda actor, _roles, _form: svc.withdraw_project(db, actor, project_id), "已撤回为草稿")
+
+    @app.post("/projects/{project_id}/delete")
+    async def project_delete(project_id: int, request: Request, db: Session = Depends(get_db)):
+        return await project_action(project_id, request, db, lambda actor, roles, _form: svc.delete_project(db, actor, roles, settings.upload_dir, project_id), "立项已删除", success_to="/projects")
 
     @app.post("/projects/{project_id}/review")
     async def project_review(project_id: int, request: Request, db: Session = Depends(get_db)):
@@ -806,6 +852,10 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
     @app.post("/assets")
     async def asset_create(request: Request, db: Session = Depends(get_db)):
         return await simple_post(request, db, "/assets", lambda actor, roles, form: svc.create_asset(db, actor, roles, str(form.get("name") or ""), str(form.get("category") or ""), int(str(form.get("total_qty") or "0")), str(form.get("location") or ""), str(form.get("description") or ""), str(form.get("kind") or "")), "资产已登记")
+
+    @app.post("/assets/{asset_id}/kind")
+    async def asset_kind_update(asset_id: int, request: Request, db: Session = Depends(get_db)):
+        return await simple_post(request, db, "/assets", lambda actor, _roles, form: svc.change_asset_kind(db, actor, asset_id, str(form.get("kind") or "")), "资产类型已修改")
 
     @app.post("/borrows")
     async def borrow_create(request: Request, db: Session = Depends(get_db)):

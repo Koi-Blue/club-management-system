@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}资产 · {{ club_name }}{% endblock %}
 {% block content %}
-<header class="page-head"><div><h1>资产</h1><p>仪器可以借用，要登记预计归还时间。耗材可以领用，不用登记归还。社长或副社长审批。</p></div></header>
+<header class="page-head"><div><h1>资产</h1><p>仪器可以借用，要登记预计归还时间。耗材可以领用，不用登记归还。社长或副社长审批。超级管理员可以改已登记资产的类型；还有未结束的借用或领用时会拦住。</p></div></header>
 <section class="grid two">
   <article class="card">
     <h2>资产</h2>
     {% if assets %}
     <table>
       <thead><tr><th>名称</th><th>类型</th><th>可用 / 总数</th><th>位置</th></tr></thead>
-      <tbody>{% for item in assets %}<tr><td>{{ item.name }}<div class="muted">{{ item.category }} {{ item.description }}</div></td><td>{{ item.kind_label }}</td><td>{{ item.available }} / {{ item.total_qty }}</td><td>{{ item.location }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for item in assets %}<tr><td>{{ item.name }}<div class="muted">{{ item.category }} {{ item.description }}</div></td><td>{% if me.is_admin %}<form class="kind-form" method="post" action="/assets/{{ item.id }}/kind"><input type="hidden" name="csrf" value="{{ csrf }}"><select name="kind" aria-label="{{ item.name }}的类型"><option value="instrument" {% if item.kind == 'instrument' %}selected{% endif %}>仪器</option><option value="consumable" {% if item.kind == 'consumable' %}selected{% endif %}>耗材</option></select><button class="secondary" type="submit">改类型</button></form>{% else %}{{ item.kind_label }}{% endif %}</td><td>{{ item.available }} / {{ item.total_qty }}</td><td>{{ item.location }}</td></tr>{% endfor %}</tbody>
     </table>
     {% else %}<p class="empty">还没有登记资产。</p>{% endif %}
     {% if me.can_manage_asset %}

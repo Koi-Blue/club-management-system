@@ -155,6 +155,9 @@ tbody tr:hover td { background: #f7f8fa; }
 }
 .roles input { width: auto; accent-color: var(--accent); }
 .actions { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: center; margin-top: 0.7rem; }
+.kind-form { display: flex; gap: 0.35rem; align-items: center; margin: 0; }
+.kind-form select { width: auto; min-width: 5.2rem; padding: 0.35rem 0.45rem; }
+.kind-form button { padding: 0.35rem 0.55rem; white-space: nowrap; }
 label.field { display: flex; flex-direction: column; gap: 0.32rem; font-size: 0.9rem; }
 label.field span { color: var(--muted); }
 input, textarea, select {
