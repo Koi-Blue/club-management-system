@@ -4,7 +4,6 @@
 <header class="page-head">
   <div>
     <h1>账号与职务</h1>
-    <p>审批、分配职务、重置密码和删除。临时密码只显示一次。删除后不能登录，档案仍保留并标注已注销。</p>
   </div>
 </header>
 <section class="card" style="margin-bottom:1rem">
@@ -26,7 +25,7 @@
   {% else %}<p class="empty">没有待审批账号。</p>{% endif %}
 </section>
 <section class="card" style="margin-bottom:1rem">
-  <h2>在册成员</h2><p class="muted">技术方向成员不具有负责人权限，可多选；分配方向后自动取消“技术部成员”的待分配状态。论坛和组织架构随当前职务更新。</p>
+  <h2>在册成员</h2>
   {% if active %}
   <div class="list">
     {% for person in active %}

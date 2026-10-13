@@ -109,6 +109,16 @@ class ProjectFile(Base):
     size: Mapped[int] = mapped_column(Integer)
     uploader_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     uploaded_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+    # all：当前项目相关人可见；selected：上传者、立项人和 project_file_viewers
+    visibility: Mapped[str] = mapped_column(String(20), default="all", server_default="'all'")
+
+
+class ProjectFileViewer(Base):
+    __tablename__ = "project_file_viewers"
+    __table_args__ = (UniqueConstraint("file_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    file_id: Mapped[int] = mapped_column(ForeignKey("project_files.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
 
 
 class LibraryFile(Base):

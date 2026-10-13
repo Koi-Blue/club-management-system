@@ -156,6 +156,7 @@ def init_db(settings: Settings) -> None:
         _add_column(db, "users", "class_name", "VARCHAR(40) DEFAULT ''")
         _add_column(db, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
         _add_column(db, "projects", "department", "VARCHAR(40) DEFAULT ''")
+        _add_column(db, "project_files", "visibility", "VARCHAR(20) NOT NULL DEFAULT 'all'")
         _add_column(db, "activities", "department", "VARCHAR(40) DEFAULT ''")
         _add_column(db, "assets", "kind", "VARCHAR(20) NOT NULL DEFAULT 'instrument'")
         _add_column(db, "borrows", "purpose", "VARCHAR(20) NOT NULL DEFAULT 'borrow'")

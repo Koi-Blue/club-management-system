@@ -27,6 +27,7 @@ from app.models import (
     PasswordReset,
     Project,
     ProjectFile,
+    ProjectFileViewer,
     ProjectMember,
     Reimbursement,
     Setting,
@@ -60,7 +61,8 @@ from app.security import hash_password, verify_password
 SHANGHAI = timezone(timedelta(hours=8))
 ALLOWED_FILE_EXT = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-    ".png", ".jpg", ".jpeg", ".zip", ".txt", ".csv",
+    ".png", ".jpg", ".jpeg", ".txt", ".csv",
+    ".zip", ".rar", ".7z",
 }
 MAX_FILE_SIZE = 20 * 1024 * 1024
 UPLOAD_CHUNK = 64 * 1024
@@ -345,14 +347,22 @@ def can_view_project(db: Session, user: User, roles: list[str], project: Project
     return sees_all_projects(roles) or project_related(db, user, project)
 
 
+def is_project_leader(user: User, project: Project) -> bool:
+    return project.leader_id == user.id
+
+
 def can_manage_project(db: Session, user: User, roles: list[str], project: Project) -> bool:
     if project.status not in {"draft", "rejected"}:
         return False
-    return project_related(db, user, project)
+    return is_project_leader(user, project)
+
+
+def can_edit_project_members(db: Session, user: User, roles: list[str], project: Project) -> bool:
+    return project.status == "approved" and is_project_leader(user, project)
 
 
 def can_withdraw_project(db: Session, user: User, project: Project) -> bool:
-    return project.status == "pending" and project_related(db, user, project)
+    return project.status == "pending" and is_project_leader(user, project)
 
 
 def can_view_activity(user: User, roles: list[str], activity: Activity) -> bool:
@@ -627,28 +637,37 @@ def submit_project(db: Session, user: User, roles: list[str], project_id: int) -
     invalidate_nav_badges(db)
 
 
+def _replace_project_members(db: Session, project: Project, member_ids: list[int]) -> None:
+    db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id))
+    db.flush()
+    for member_id in member_ids:
+        db.add(ProjectMember(project_id=project.id, user_id=member_id))
+
+
 def update_project(db: Session, user: User, roles: list[str], project_id: int, title: str, summary: str, department: str, member_ids: list[int]) -> None:
     project = db.get(Project, project_id)
-    if project is None or not project_related(db, user, project):
+    if project is None or not is_project_leader(user, project):
         raise AppError("没有权限修改这个立项")
+    selected = active_member_ids(db, member_ids)
+    if project.status == "approved":
+        _replace_project_members(db, project, selected)
+        project.updated_at = utcnow()
+        db.commit()
+        return
     if project.status not in {"draft", "rejected"}:
         raise AppError("当前状态不能修改立项")
     ensure_project_department(user, roles, department, keeping=project.department)
-    selected = active_member_ids(db, member_ids)
     project.title = require_text(title, "项目名称", 80)
     project.summary = optional_text(summary, "项目说明", 4000)
     project.department = department
     project.updated_at = utcnow()
-    db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id))
-    db.flush()
-    for member_id in selected:
-        db.add(ProjectMember(project_id=project.id, user_id=member_id))
+    _replace_project_members(db, project, selected)
     db.commit()
 
 
 def withdraw_project(db: Session, user: User, project_id: int) -> None:
     project = db.get(Project, project_id)
-    if project is None or not project_related(db, user, project):
+    if project is None or not is_project_leader(user, project):
         raise AppError("没有权限撤回这个立项")
     if project.status != "pending":
         raise AppError("只有待审批的立项可以撤回")
@@ -662,11 +681,14 @@ def withdraw_project(db: Session, user: User, project_id: int) -> None:
 
 def delete_project(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int) -> None:
     project = db.get(Project, project_id)
-    if project is None or not project_related(db, user, project):
+    if project is None or not is_project_leader(user, project):
         raise AppError("没有权限删除这个立项")
     if not can_manage_project(db, user, roles, project):
         raise AppError("只有草稿或已驳回的立项可以删除")
     files = db.scalars(select(ProjectFile).where(ProjectFile.project_id == project.id)).all()
+    file_ids = [row.id for row in files]
+    if file_ids:
+        db.execute(delete(ProjectFileViewer).where(ProjectFileViewer.file_id.in_(file_ids)))
     paths = [safe_path(upload_dir, ["projects", str(project.id), row.stored_name]) for row in files]
     for path in paths:
         path.unlink(missing_ok=True)
@@ -793,15 +815,134 @@ def safe_path(upload_dir: str, parts: list[str]) -> Path:
     return path
 
 
-def save_project_file(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int, filename: str, source) -> None:
+def project_audience_ids(db: Session, project: Project) -> list[int]:
+    ids: list[int] = []
+    if project.leader_id:
+        ids.append(project.leader_id)
+    for user_id in project_member_ids(db, project.id):
+        if user_id not in ids:
+            ids.append(user_id)
+    return ids
+
+
+def project_audience(db: Session, project: Project) -> list[dict]:
+    ids = project_audience_ids(db, project)
+    rows = db.scalars(select(User).where(User.id.in_(ids))).all() if ids else []
+    by_id = {row.id: row for row in rows}
+    audience = []
+    for user_id in ids:
+        person = by_id.get(user_id)
+        if person is None:
+            label = "已注销"
+        else:
+            label = f"{person.class_name} {name_of(person)}".strip()
+        audience.append({"id": user_id, "name": label})
+    return audience
+
+
+def _file_visible_to(user: User, project: Project, row: ProjectFile, allowed_ids: set[int]) -> bool:
+    if user.is_admin or row.uploader_id == user.id or project.leader_id == user.id:
+        return True
+    if (row.visibility or "all") != "selected":
+        return True
+    return row.id in allowed_ids
+
+
+def can_view_project_file(db: Session, user: User, roles: list[str], project: Project, row: ProjectFile) -> bool:
+    if row.project_id != project.id or not can_view_project(db, user, roles, project):
+        return False
+    if user.is_admin or sees_all_projects(roles):
+        return True
+    if row.uploader_id == user.id or project.leader_id == user.id:
+        return True
+    if (row.visibility or "all") != "selected":
+        return True
+    return db.scalar(
+        select(ProjectFileViewer.id).where(ProjectFileViewer.file_id == row.id, ProjectFileViewer.user_id == user.id)
+    ) is not None
+
+
+def visible_project_files(db: Session, user: User, roles: list[str], project: Project, files: list[ProjectFile]) -> list[ProjectFile]:
+    if not can_view_project(db, user, roles, project):
+        return []
+    if user.is_admin or sees_all_projects(roles):
+        return list(files)
+    needs = [
+        row.id for row in files
+        if (row.visibility or "all") == "selected" and row.uploader_id != user.id and project.leader_id != user.id
+    ]
+    allowed: set[int] = set()
+    if needs:
+        allowed = set(db.scalars(select(ProjectFileViewer.file_id).where(
+            ProjectFileViewer.file_id.in_(needs), ProjectFileViewer.user_id == user.id,
+        )).all())
+    return [row for row in files if _file_visible_to(user, project, row, allowed)]
+
+
+def project_files_for(db: Session, user: User, roles: list[str], project: Project) -> list[dict]:
+    rows = db.scalars(select(ProjectFile).where(ProjectFile.project_id == project.id).order_by(ProjectFile.uploaded_at.desc())).all()
+    visible = visible_project_files(db, user, roles, project, list(rows))
+    selected_ids = [row.id for row in visible if (row.visibility or "all") == "selected"]
+    viewer_map: dict[int, list[int]] = {}
+    if selected_ids:
+        pairs = db.execute(select(ProjectFileViewer.file_id, ProjectFileViewer.user_id).where(ProjectFileViewer.file_id.in_(selected_ids))).all()
+        for file_id, user_id in pairs:
+            viewer_map.setdefault(file_id, []).append(user_id)
+    name_ids = {project.leader_id, *(row.uploader_id for row in visible)}
+    for group in viewer_map.values():
+        name_ids.update(group)
+    names = name_map(db, name_ids)
+    listed = []
+    for row in visible:
+        if (row.visibility or "all") == "selected":
+            ordered: list[int] = []
+            for user_id in [row.uploader_id, project.leader_id, *viewer_map.get(row.id, [])]:
+                if user_id and user_id not in ordered:
+                    ordered.append(user_id)
+            scope = "、".join(names.get(user_id, "已注销") for user_id in ordered)
+        else:
+            scope = "全体"
+        listed.append({
+            "id": row.id,
+            "name": row.original_name,
+            "uploader": names.get(row.uploader_id, "已注销"),
+            "uploaded_at": fmt_dt(row.uploaded_at),
+            "size": row.size,
+            "scope": scope,
+            "can_delete": row.uploader_id == user.id or user.is_admin or sees_all_projects(roles),
+        })
+    return listed
+
+
+def save_project_file(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int, filename: str, source, viewer_ids: list[int] | None = None) -> None:
     project = db.get(Project, project_id)
     if project is None or not can_view_project(db, user, roles, project):
         raise AppError("找不到这个立项")
     if not project_related(db, user, project) and not sees_all_projects(roles):
         raise AppError("没有权限上传资料")
+    audience = project_audience_ids(db, project)
+    allowed = set(audience)
+    selected: list[int] = []
+    if viewer_ids is not None:
+        for raw in viewer_ids:
+            if raw not in allowed:
+                raise AppError("可见人必须是当前项目成员")
+            if raw not in selected:
+                selected.append(raw)
+        visibility = "all" if set(selected) >= allowed else "selected"
+    else:
+        visibility = "all"
     with upload_slot():
         stored, original, size = _store_file(upload_dir, ["projects", str(project.id)], filename, source)
-    db.add(ProjectFile(project_id=project.id, stored_name=stored, original_name=original, size=size, uploader_id=user.id))
+    row = ProjectFile(
+        project_id=project.id, stored_name=stored, original_name=original, size=size,
+        uploader_id=user.id, visibility=visibility,
+    )
+    db.add(row)
+    db.flush()
+    if visibility == "selected":
+        for user_id in selected:
+            db.add(ProjectFileViewer(file_id=row.id, user_id=user_id))
     project.updated_at = utcnow()
     db.commit()
 
@@ -809,13 +950,14 @@ def save_project_file(db: Session, user: User, roles: list[str], upload_dir: str
 def delete_project_file(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int, file_id: int) -> None:
     row = db.get(ProjectFile, file_id)
     project = db.get(Project, project_id)
-    if row is None or project is None or row.project_id != project.id or not can_view_project(db, user, roles, project):
+    if row is None or project is None or row.project_id != project.id or not can_view_project_file(db, user, roles, project, row):
         raise AppError("找不到这个文件")
     if user.id != row.uploader_id and not user.is_admin and not sees_all_projects(roles):
         raise AppError("没有权限删除这个文件")
     path = safe_path(upload_dir, ["projects", str(project_id), row.stored_name])
     if path.exists():
         path.unlink()
+    db.execute(delete(ProjectFileViewer).where(ProjectFileViewer.file_id == row.id))
     db.delete(row)
     db.commit()
 

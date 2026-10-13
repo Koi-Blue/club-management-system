@@ -16,6 +16,7 @@
     <div class="actions">
       {% if project.can_submit %}<form method="post" action="/projects/{{ project.id }}/submit"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary" type="submit">提交审批</button></form>{% endif %}
       {% if project.can_edit %}<a data-page-link class="secondary" href="/projects/{{ project.id }}/edit">编辑</a>{% endif %}
+      {% if project.can_edit_members %}<a data-page-link class="secondary" href="/projects/{{ project.id }}/edit">调整成员</a>{% endif %}
       {% if project.can_withdraw %}<form method="post" action="/projects/{{ project.id }}/withdraw"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">撤回为草稿</button></form>{% endif %}
       {% if project.can_archive %}<form method="post" action="/projects/{{ project.id }}/archive"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">归档留存</button></form>{% endif %}
       {% if project.can_delete %}<form method="post" action="/projects/{{ project.id }}/delete" onsubmit="return confirm('确定删除这个立项？关联成员和已上传资料会一起删掉。')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger" type="submit">删除</button></form>{% endif %}
@@ -38,7 +39,7 @@
     <div class="list">
       {% for file in project.files %}
       <div class="item file-row">
-        <div><a href="/projects/{{ project.id }}/files/{{ file.id }}">{{ file.name }}</a><p class="muted">{{ file.uploader }} · {{ file.uploaded_at }}</p></div>
+        <div><a href="/projects/{{ project.id }}/files/{{ file.id }}">{{ file.name }}</a><p class="muted">{{ file.uploader }} · {{ file.uploaded_at }} · {{ file.scope }}</p></div>
         {% if file.can_delete %}<form method="post" action="/projects/{{ project.id }}/files/{{ file.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger" type="submit">删除</button></form>{% endif %}
       </div>
       {% endfor %}
@@ -47,7 +48,14 @@
     {% if project.can_upload %}
     <form class="stack" style="margin-top:1rem" method="post" action="/projects/{{ project.id }}/files" enctype="multipart/form-data">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="file" name="file" required>
+      <input type="hidden" name="viewers_set" value="1">
+      <label class="field"><span>文件</span><input type="file" name="file" required accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.txt,.csv,.zip,.rar,.7z"></label>
+      <div>
+        <p class="group-label">可见人</p>
+        <div class="roles">
+          {% for person in project.audience %}<label><input type="checkbox" name="viewers" value="{{ person.id }}" checked>{{ person.name }}</label>{% endfor %}
+        </div>
+      </div>
       <button class="secondary" type="submit">上传</button>
     </form>
     {% endif %}

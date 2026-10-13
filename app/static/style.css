@@ -101,7 +101,7 @@ p { line-height: 1.65; margin: 0.35rem 0; }
 .navigation-status { position: absolute; right: 1rem; top: 0.5rem; z-index: 5; font-size: 0.8rem; color: var(--muted); pointer-events: none; }
 .navigation-status:empty { display: none; }
 .page-viewport[aria-busy="true"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); z-index: 5; }
-.page-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-end; margin-bottom: 1.15rem; }
+.page-head { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 0.9rem; }
 .page-head p, .muted { color: var(--muted); margin: 0.35rem 0 0; }
 .grid { display: grid; gap: 0.9rem; }
 .two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }

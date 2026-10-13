@@ -4,7 +4,7 @@
 <header class="page-head">
   <div>
     <h1>{% if finance %}财务{% else %}我的报销{% endif %}</h1>
-    <p>{% if finance %}收支和全部报销只对超级管理员、社长、财务部部长可见。当前结余 {{ balance }} 元。{% else %}你只能看到自己的报销。提交后由财务部长或社长审批。{% endif %}</p>
+    {% if finance %}<p>结余 {{ balance }} 元</p>{% endif %}
   </div>
 </header>
 <section class="grid two">
@@ -49,7 +49,7 @@
       <label class="field"><span>事由</span><input name="reason" maxlength="200" required></label>
       <label class="field"><span>发票（1～10 份，PDF/JPG/PNG）</span><input type="file" name="invoices" accept=".pdf,.jpg,.jpeg,.png" multiple required></label>
       <label class="field"><span>收款二维码（一张 JPG/PNG）</span><input type="file" name="qr" accept=".jpg,.jpeg,.png" required></label>
-      <p class="muted">单个文件不超过 20MB，合计不超过 50MB。仅本人及财务审批人员可查看。</p>
+      <p class="muted">单个文件不超过 20MB，合计不超过 50MB。</p>
       <button class="primary" type="submit">提交</button>
     </form>
   </article>
