@@ -343,3 +343,154 @@ def test_legacy_assets_without_kind_stay_instruments(tmp_path, monkeypatch):
     finally:
         database.engine.dispose()
         database.engine, database.SessionLocal = previous
+
+
+def asset_row(html, name):
+    match = re.search(rf"<tr>(?:(?!</tr>).)*{re.escape(name)}(?:(?!</tr>).)*</tr>", html)
+    assert match, name
+    return match.group(0)
+
+
+def kind_action(html, name):
+    match = re.search(r'action="(/assets/\d+/kind)"', asset_row(html, name))
+    assert match, name
+    return match.group(1)
+
+
+def test_admin_can_change_kind_when_stock_is_clear(desk):
+    _app, admin, member = desk
+    person, _uid = member("林夏同学")
+    assert "超级管理员可以改已登记资产的类型" in admin.get("/assets").text
+    assert "资产已登记" in post(admin, "/assets", {
+        "name": "空万用表", "kind": "instrument", "category": "工具", "total_qty": "4", "location": "柜", "description": "",
+    }).text
+    listed = admin.get("/assets")
+    action = kind_action(listed.text, "空万用表")
+    assert "改类型" in asset_row(listed.text, "空万用表")
+    assert "类型没有变化" in post(admin, action, {"kind": "instrument"}).text
+    assert "请选择仪器或耗材" in post(admin, action, {"kind": "tool"}).text
+    assert "找不到这项资产" in post(admin, "/assets/99999/kind", {"kind": "consumable"}).text
+    changed = post(admin, action, {"kind": "consumable"})
+    assert "资产类型已修改" in changed.text
+    assert "没有可借的仪器" in changed.text
+    assert "空万用表" in form_html(changed.text, "/issues")
+    assert "4 / 4" in asset_row(changed.text, "空万用表")
+    consumable_id = option_id(form_html(changed.text, "/issues"), "空万用表")
+    assert "耗材不能借用，请走领用" in post(person, "/borrows", {
+        "asset_id": consumable_id, "qty": "1", "reason": "当仪器借", "due_at": due_in(),
+    }).text
+    assert "领用申请已提交" in post(person, "/issues", {"asset_id": consumable_id, "qty": "1", "reason": "焊接"}).text
+
+
+def test_open_borrow_blocks_turning_instrument_into_consumable(desk):
+    _app, admin, member = desk
+    person, _uid = member("周宁同学")
+    assert "资产已登记" in post(admin, "/assets", {
+        "name": "待批示波器", "kind": "instrument", "category": "仪器", "total_qty": "2", "location": "", "description": "",
+    }).text
+    assert "资产已登记" in post(admin, "/assets", {
+        "name": "在借示波器", "kind": "instrument", "category": "仪器", "total_qty": "2", "location": "", "description": "",
+    }).text
+    page = person.get("/assets")
+    borrow_form = form_html(page.text, "/borrows")
+    pending_id = option_id(borrow_form, "待批示波器")
+    held_id = option_id(borrow_form, "在借示波器")
+    assert "借用申请已提交" in post(person, "/borrows", {
+        "asset_id": pending_id, "qty": "1", "reason": "先申请", "due_at": due_in(),
+    }).text
+    assert "借用申请已提交" in post(person, "/borrows", {
+        "asset_id": held_id, "qty": "1", "reason": "拿去用", "due_at": due_in(),
+    }).text
+    review = admin.get("/assets")
+    pending_action = kind_action(review.text, "待批示波器")
+    blocked = post(admin, pending_action, {"kind": "consumable"})
+    assert "还有未归还或待审批的借用，不能改成耗材" in blocked.text
+    with database.SessionLocal() as db:
+        pending_asset = db.scalar(select(Asset).where(Asset.name == "待批示波器"))
+        assert pending_asset.kind == "instrument"
+        borrow_ids = list(db.scalars(select(Borrow.id).where(Borrow.status == "pending").order_by(Borrow.id)))
+    assert "借用审批已保存" in post(admin, f"/borrows/{borrow_ids[0]}/review", {"decision": "rejected", "comment": "先不借"}).text
+    changed = post(admin, pending_action, {"kind": "consumable"})
+    assert "资产类型已修改" in changed.text
+    assert "待批示波器" in form_html(changed.text, "/issues")
+    assert "待批示波器" not in form_html(changed.text, "/borrows")
+
+    held_action = kind_action(admin.get("/assets").text, "在借示波器")
+    assert "借用审批已保存" in post(admin, f"/borrows/{borrow_ids[1]}/review", {"decision": "approved", "comment": "可以"}).text
+    still = post(admin, held_action, {"kind": "consumable"})
+    assert "还有未归还或待审批的借用，不能改成耗材" in still.text
+    with database.SessionLocal() as db:
+        assert db.scalar(select(Asset.kind).where(Asset.name == "在借示波器")) == "instrument"
+    assert "已登记归还" in post(person, f"/borrows/{borrow_ids[1]}/return").text
+    returned = post(admin, held_action, {"kind": "consumable"})
+    assert "资产类型已修改" in returned.text
+    done = request_row(returned.text, "在借示波器", "借用")
+    assert "已归还" in done
+    assert "2 / 2" in asset_row(returned.text, "在借示波器")
+    assert "在借示波器" in form_html(returned.text, "/issues")
+
+
+def test_open_issue_blocks_turning_consumable_into_instrument(desk):
+    _app, admin, member = desk
+    person, _uid = member("何琪同学")
+    assert "资产已登记" in post(admin, "/assets", {
+        "name": "待批焊锡", "kind": "consumable", "category": "材料", "total_qty": "3", "location": "", "description": "",
+    }).text
+    assert "资产已登记" in post(admin, "/assets", {
+        "name": "已领热缩管", "kind": "consumable", "category": "材料", "total_qty": "3", "location": "", "description": "",
+    }).text
+    page = person.get("/assets")
+    issue_form = form_html(page.text, "/issues")
+    pending_id = option_id(issue_form, "待批焊锡")
+    taken_id = option_id(issue_form, "已领热缩管")
+    assert "领用申请已提交" in post(person, "/issues", {"asset_id": pending_id, "qty": "1", "reason": "先领"}).text
+    assert "领用申请已提交" in post(person, "/issues", {"asset_id": taken_id, "qty": "1", "reason": "拿走"}).text
+    review = admin.get("/assets")
+    pending_action = kind_action(review.text, "待批焊锡")
+    assert "还有已领用或待审批的领用，不能改成仪器" in post(admin, pending_action, {"kind": "instrument"}).text
+    with database.SessionLocal() as db:
+        assert db.scalar(select(Asset.kind).where(Asset.name == "待批焊锡")) == "consumable"
+        issue_ids = list(db.scalars(select(Borrow.id).where(Borrow.purpose == "issue", Borrow.status == "pending").order_by(Borrow.id)))
+    assert "领用审批已保存" in post(admin, f"/borrows/{issue_ids[0]}/review", {"decision": "rejected", "comment": "先不发"}).text
+    changed = post(admin, pending_action, {"kind": "instrument"})
+    assert "资产类型已修改" in changed.text
+    assert "待批焊锡" in form_html(changed.text, "/borrows")
+    assert "待批焊锡" not in form_html(changed.text, "/issues")
+    board_id = option_id(form_html(changed.text, "/borrows"), "待批焊锡")
+    assert "仪器请走借用，并填写预计归还时间" in post(person, "/issues", {"asset_id": board_id, "qty": "1", "reason": "当耗材"}).text
+    assert "借用申请已提交" in post(person, "/borrows", {
+        "asset_id": board_id, "qty": "1", "reason": "改成仪器后再借", "due_at": due_in(),
+    }).text
+
+    taken_action = kind_action(admin.get("/assets").text, "已领热缩管")
+    assert "领用审批已保存" in post(admin, f"/borrows/{issue_ids[1]}/review", {"decision": "approved", "comment": "拿去"}).text
+    blocked = post(admin, taken_action, {"kind": "instrument"})
+    assert "还有已领用或待审批的领用，不能改成仪器" in blocked.text
+    assert "耗材无需归还" in post(admin, f"/borrows/{issue_ids[1]}/return").text
+    still = post(admin, taken_action, {"kind": "instrument"})
+    assert "还有已领用或待审批的领用，不能改成仪器" in still.text
+    with database.SessionLocal() as db:
+        assert db.scalar(select(Asset.kind).where(Asset.name == "已领热缩管")) == "consumable"
+    assert "2 / 3" in asset_row(admin.get("/assets").text, "已领热缩管")
+
+
+def test_only_super_admin_can_change_asset_kind(desk):
+    _app, admin, member = desk
+    president, _president_id = member("社长周宁", ["社长", "宣传部成员"])
+    minister, _minister_id = member("技术部部长", ["技术部部长"])
+    assert "资产已登记" in post(president, "/assets", {
+        "name": "社团电钻", "kind": "instrument", "category": "工具", "total_qty": "1", "location": "", "description": "",
+    }).text
+    admin_page = admin.get("/assets")
+    action = kind_action(admin_page.text, "社团电钻")
+    for client in (president, minister):
+        page = client.get("/assets")
+        row = asset_row(page.text, "社团电钻")
+        assert "改类型" not in row
+        assert "/kind" not in row
+        assert "仪器" in row
+        refused = post(client, action, {"kind": "consumable"})
+        assert "只有超级管理员可以修改资产类型" in refused.text
+    with database.SessionLocal() as db:
+        assert db.scalar(select(Asset.kind).where(Asset.name == "社团电钻")) == "instrument"
+    assert "资产类型已修改" in post(admin, action, {"kind": "consumable"}).text

@@ -351,6 +351,10 @@ def can_manage_project(db: Session, user: User, roles: list[str], project: Proje
     return project_related(db, user, project)
 
 
+def can_withdraw_project(db: Session, user: User, project: Project) -> bool:
+    return project.status == "pending" and project_related(db, user, project)
+
+
 def can_view_activity(user: User, roles: list[str], activity: Activity) -> bool:
     if activity.status in {"published", "closed"}:
         return True
@@ -560,11 +564,27 @@ def change_password(db: Session, user: User, current: str, new_password: str, co
     db.commit()
 
 
-def create_project(db: Session, user: User, roles: list[str], title: str, summary: str, department: str, member_ids: list[int]) -> Project:
+def project_department_choices(user: User, roles: list[str], current: str = "") -> list[str]:
+    if "荣誉社长" in roles or user.is_admin:
+        found = list(DEPARTMENTS)
+    else:
+        found = visible_library_departments(user, roles) or ([user.department] if user.department in DEPARTMENTS else [])
+    allowed = set(found)
+    if current in DEPARTMENTS:
+        allowed.add(current)
+    return [dept for dept in DEPARTMENTS if dept in allowed]
+
+
+def ensure_project_department(user: User, roles: list[str], department: str, *, keeping: str | None = None) -> None:
     if department not in DEPARTMENTS:
         raise AppError("请选择部门")
+    if keeping is not None and department == keeping:
+        return
     if department not in user_departments(user, roles) and "荣誉社长" not in roles and not user.is_admin:
         raise AppError("只能在自己的部门立项")
+
+
+def active_member_ids(db: Session, member_ids: list[int]) -> list[int]:
     selected = []
     for raw in member_ids:
         if raw in selected:
@@ -575,6 +595,12 @@ def create_project(db: Session, user: User, roles: list[str], title: str, summar
         selected.append(raw)
     if not selected:
         raise AppError("请勾选关联成员")
+    return selected
+
+
+def create_project(db: Session, user: User, roles: list[str], title: str, summary: str, department: str, member_ids: list[int]) -> Project:
+    ensure_project_department(user, roles, department)
+    selected = active_member_ids(db, member_ids)
     project = Project(
         title=require_text(title, "项目名称", 80),
         summary=optional_text(summary, "项目说明", 4000),
@@ -599,6 +625,63 @@ def submit_project(db: Session, user: User, roles: list[str], project_id: int) -
     project.updated_at = utcnow()
     db.commit()
     invalidate_nav_badges(db)
+
+
+def update_project(db: Session, user: User, roles: list[str], project_id: int, title: str, summary: str, department: str, member_ids: list[int]) -> None:
+    project = db.get(Project, project_id)
+    if project is None or not project_related(db, user, project):
+        raise AppError("没有权限修改这个立项")
+    if project.status not in {"draft", "rejected"}:
+        raise AppError("当前状态不能修改立项")
+    ensure_project_department(user, roles, department, keeping=project.department)
+    selected = active_member_ids(db, member_ids)
+    project.title = require_text(title, "项目名称", 80)
+    project.summary = optional_text(summary, "项目说明", 4000)
+    project.department = department
+    project.updated_at = utcnow()
+    db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id))
+    db.flush()
+    for member_id in selected:
+        db.add(ProjectMember(project_id=project.id, user_id=member_id))
+    db.commit()
+
+
+def withdraw_project(db: Session, user: User, project_id: int) -> None:
+    project = db.get(Project, project_id)
+    if project is None or not project_related(db, user, project):
+        raise AppError("没有权限撤回这个立项")
+    if project.status != "pending":
+        raise AppError("只有待审批的立项可以撤回")
+    project.status = "draft"
+    project.reviewer_id = None
+    project.review_comment = ""
+    project.updated_at = utcnow()
+    db.commit()
+    invalidate_nav_badges(db)
+
+
+def delete_project(db: Session, user: User, roles: list[str], upload_dir: str, project_id: int) -> None:
+    project = db.get(Project, project_id)
+    if project is None or not project_related(db, user, project):
+        raise AppError("没有权限删除这个立项")
+    if not can_manage_project(db, user, roles, project):
+        raise AppError("只有草稿或已驳回的立项可以删除")
+    files = db.scalars(select(ProjectFile).where(ProjectFile.project_id == project.id)).all()
+    paths = [safe_path(upload_dir, ["projects", str(project.id), row.stored_name]) for row in files]
+    for path in paths:
+        path.unlink(missing_ok=True)
+    for row in files:
+        db.delete(row)
+    db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id))
+    db.flush()
+    folder = safe_path(upload_dir, ["projects", str(project.id)])
+    db.delete(project)
+    db.commit()
+    if folder.is_dir():
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
 
 
 def review_project(db: Session, user: User, roles: list[str], project_id: int, decision: str, comment: str) -> None:
@@ -776,6 +859,42 @@ def normalize_asset_kind(kind: str) -> str:
     if value not in ASSET_KINDS:
         raise AppError("请选择仪器或耗材")
     return value
+
+
+def require_asset_kind(kind: str) -> str:
+    value = (kind or "").strip()
+    if value not in ASSET_KINDS:
+        raise AppError("请选择仪器或耗材")
+    return value
+
+
+def open_asset_flow_count(db: Session, asset_id: int, purpose: str) -> int:
+    total = db.scalar(
+        select(func.count()).select_from(Borrow).where(
+            Borrow.asset_id == asset_id,
+            Borrow.purpose == purpose,
+            Borrow.status.in_(("pending", "approved")),
+        )
+    )
+    return int(total or 0)
+
+
+def change_asset_kind(db: Session, user: User, asset_id: int, kind: str) -> None:
+    if not user.is_admin:
+        raise AppError("只有超级管理员可以修改资产类型")
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise AppError("找不到这项资产")
+    new_kind = require_asset_kind(kind)
+    current = asset_kind_of(asset)
+    if new_kind == current:
+        raise AppError("类型没有变化")
+    if new_kind == "consumable" and open_asset_flow_count(db, asset.id, "borrow"):
+        raise AppError("还有未归还或待审批的借用，不能改成耗材")
+    if new_kind == "instrument" and open_asset_flow_count(db, asset.id, "issue"):
+        raise AppError("还有已领用或待审批的领用，不能改成仪器")
+    asset.kind = new_kind
+    db.commit()
 
 
 def create_asset(db: Session, user: User, roles: list[str], name: str, category: str, total_qty: int, location: str, description: str, kind: str = "") -> None:
@@ -1241,8 +1360,12 @@ def build_org_tree(db: Session, viewer: User, viewer_roles: list[str] | None = N
     return {"tree": [walk(node) for node in ORG_TREE], "independent": [walk(node) for node in ORG_INDEPENDENT]}
 
 
+def project_member_ids(db: Session, project_id: int) -> list[int]:
+    return list(db.scalars(select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)).all())
+
+
 def project_member_names(db: Session, project_id: int) -> list[str]:
-    ids = db.scalars(select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)).all()
+    ids = project_member_ids(db, project_id)
     names = name_map(db, set(ids))
     return [names.get(item, "已注销") for item in ids]
 
