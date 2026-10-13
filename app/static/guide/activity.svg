@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 150" fill="none">
+  <rect width="680" height="150" rx="12" fill="#f7f8fa"/>
+  <rect x="24" y="46" width="120" height="58" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="58" y="72" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">创建</text>
+  <text x="46" y="92" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">待发放</text>
+  <path d="M150 75h28" stroke="#3a3f46" stroke-width="1.6"/>
+  <rect x="184" y="46" width="120" height="58" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="218" y="72" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">发放</text>
+  <text x="206" y="92" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">可以报名</text>
+  <path d="M310 75h28" stroke="#3a3f46" stroke-width="1.6"/>
+  <rect x="344" y="46" width="120" height="58" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="378" y="72" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">报名</text>
+  <text x="360" y="92" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">或取消报名</text>
+  <path d="M470 75h28" stroke="#3a3f46" stroke-width="1.6"/>
+  <rect x="504" y="46" width="148" height="58" rx="10" fill="#eceff3" stroke="#c5c8ce"/>
+  <text x="548" y="72" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">签到</text>
+  <text x="522" y="92" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">开始前 30 分钟起</text>
+</svg>

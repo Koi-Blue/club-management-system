@@ -143,7 +143,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         user = active_user(request, db)
         if user is None:
             return None, redirect("/login")
-        if user.must_change_password and request.url.path not in {"/profile", "/profile/password"}:
+        if user.must_change_password and request.url.path not in {"/profile", "/profile/password", "/guide"}:
             flash(request, "请先设置新密码，完成前不能使用其他功能", "error")
             return None, redirect("/profile")
         return user, None
@@ -205,6 +205,13 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         if current:
             return redirect("/profile" if current.must_change_password else "/")
         return render(request, name, {"csrf": ensure_csrf(request), "flash": request.session.pop("flash", None), "club_name": svc.club_name(db)})
+
+    @app.get("/guide")
+    def guide_page(request: Request, db: Session = Depends(get_db)):
+        user = active_user(request, db)
+        if user is None:
+            return render(request, "guide_public.html", {"club_name": svc.club_name(db)})
+        return render(request, "guide.html", shell(request, db, user, "guide"))
 
     @app.get("/healthz")
     def healthz():
@@ -431,8 +438,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             if "flash" not in request.session:
                 flash(request, "找不到这个立项，或你没有查看权限", "error")
             return redirect("/projects")
-        files = db.scalars(select(ProjectFile).where(ProjectFile.project_id == project.id).order_by(ProjectFile.uploaded_at.desc())).all()
-        names = svc.name_map(db, {project.leader_id, project.reviewer_id or 0, *(row.uploader_id for row in files)})
+        names = svc.name_map(db, {project.leader_id, project.reviewer_id or 0})
         manageable = svc.can_manage_project(db, user, roles, project)
         detail = {
             "id": project.id, "title": project.title, "summary": project.summary, "department": project.department,
@@ -440,13 +446,15 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             "review_comment": project.review_comment, "updated_at": svc.fmt_dt(project.updated_at),
             "can_submit": manageable,
             "can_edit": manageable,
+            "can_edit_members": svc.can_edit_project_members(db, user, roles, project),
             "can_delete": manageable,
             "can_withdraw": svc.can_withdraw_project(db, user, project),
             "can_review": can_approve_project(user.is_admin, roles) and project.status == "pending",
             "can_archive": project.status == "approved" and (svc.project_related(db, user, project) or can_approve_project(user.is_admin, roles)),
             "can_upload": svc.project_related(db, user, project) or sees_all_projects(roles),
             "members": svc.project_member_names(db, project.id),
-            "files": [{"id": row.id, "name": row.original_name, "uploader": names.get(row.uploader_id, "已注销"), "uploaded_at": svc.fmt_dt(row.uploaded_at), "size": row.size, "can_delete": row.uploader_id == user.id or user.is_admin or sees_all_projects(roles)} for row in files],
+            "audience": svc.project_audience(db, project),
+            "files": svc.project_files_for(db, user, roles, project),
         }
         return render(request, "project_detail.html", shell(request, db, user, "projects", project=detail))
 
@@ -461,18 +469,21 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             if "flash" not in request.session:
                 flash(request, "找不到这个立项，或你没有查看权限", "error")
             return redirect("/projects")
-        if not svc.can_manage_project(db, user, roles, project):
-            if not svc.project_related(db, user, project):
-                flash(request, "没有权限修改这个立项", "error")
-            else:
+        full = svc.can_manage_project(db, user, roles, project)
+        members_only = svc.can_edit_project_members(db, user, roles, project)
+        if not full and not members_only:
+            if svc.is_project_leader(user, project):
                 flash(request, "当前状态不能修改立项", "error")
+            else:
+                flash(request, "没有权限修改这个立项", "error")
             return redirect(f"/projects/{project_id}")
         member_ids = set(svc.project_member_ids(db, project.id))
         people = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.real_name)).all()
         return render(request, "project_edit.html", shell(
             request, db, user, "projects",
+            members_only=members_only,
             project={"id": project.id, "title": project.title, "summary": project.summary, "department": project.department},
-            choices=svc.project_department_choices(user, roles, project.department),
+            choices=svc.project_department_choices(user, roles, project.department) if full else [],
             people=[{"id": row.id, "real_name": row.real_name, "class_name": row.class_name, "checked": row.id in member_ids} for row in people],
         ))
 
@@ -529,7 +540,11 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             upload = form.get("file")
             if upload is None or not getattr(upload, "filename", ""):
                 raise AppError("请选择文件")
-            svc.save_project_file(db, actor, roles, settings.upload_dir, project_id, upload.filename, upload.file)
+            try:
+                viewer_ids = [int(item) for item in form.getlist("viewers")] if form.get("viewers_set") else None
+            except ValueError:
+                raise AppError("可见人不正确") from None
+            svc.save_project_file(db, actor, roles, settings.upload_dir, project_id, upload.filename, upload.file, viewer_ids)
         return await project_action(project_id, request, db, action, "资料已上传")
 
     @app.post("/projects/{project_id}/files/{file_id}/delete")
@@ -544,8 +559,10 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         project = db.get(Project, project_id)
         row = db.get(ProjectFile, file_id)
         roles = svc.roles_of(db, user.id)
-        if project is None or row is None or row.project_id != project.id or not svc.can_view_project(db, user, roles, project):
+        if project is None or row is None or row.project_id != project.id or not svc.can_view_project_file(db, user, roles, project, row):
             flash(request, "找不到这个文件", "error")
+            if project is not None and svc.can_view_project(db, user, roles, project):
+                return redirect(f"/projects/{project_id}")
             return redirect("/projects")
         path = svc.safe_path(settings.upload_dir, ["projects", str(project_id), row.stored_name])
         if not path.exists():

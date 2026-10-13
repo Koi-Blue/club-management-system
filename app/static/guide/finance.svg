@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 150" fill="none">
+  <rect width="680" height="150" rx="12" fill="#f7f8fa"/>
+  <rect x="16" y="40" width="112" height="70" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="36" y="72" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">金额事由</text>
+  <text x="52" y="94" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">填写</text>
+  <path d="M132 75h12" stroke="#3a3f46" stroke-width="1.6"/>
+  <rect x="148" y="40" width="124" height="70" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="164" y="72" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">发票、二维码</text>
+  <text x="190" y="94" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">上传</text>
+  <path d="M276 75h12" stroke="#3a3f46" stroke-width="1.6"/>
+  <rect x="292" y="40" width="100" height="70" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="322" y="80" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">提交</text>
+  <path d="M396 75h12" stroke="#3a3f46" stroke-width="1.6"/>
+  <rect x="412" y="40" width="100" height="70" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="442" y="80" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">通过</text>
+  <path d="M516 75h12" stroke="#3a3f46" stroke-width="1.6"/>
+  <rect x="532" y="40" width="132" height="70" rx="10" fill="#eceff3" stroke="#c5c8ce"/>
+  <text x="556" y="80" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">登记已付款</text>
+</svg>

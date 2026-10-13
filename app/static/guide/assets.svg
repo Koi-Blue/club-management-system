@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 188" fill="none">
+  <rect width="680" height="188" rx="12" fill="#f7f8fa"/>
+  <rect x="20" y="18" width="310" height="152" rx="12" fill="#fff" stroke="#e4e6ea"/>
+  <text x="36" y="46" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="15">借用仪器</text>
+  <text x="36" y="78" fill="#3a3f46" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">1  选择仪器和数量</text>
+  <text x="36" y="104" fill="#3a3f46" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">2  填写预计归还和事由</text>
+  <text x="36" y="130" fill="#3a3f46" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">3  提交，通过后使用</text>
+  <text x="36" y="156" fill="#3a3f46" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">4  用完后登记归还</text>
+  <rect x="350" y="18" width="310" height="152" rx="12" fill="#fff" stroke="#e4e6ea"/>
+  <text x="366" y="46" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="15">领用耗材</text>
+  <text x="366" y="78" fill="#3a3f46" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">1  选择耗材和数量</text>
+  <text x="366" y="104" fill="#3a3f46" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">2  填写事由</text>
+  <text x="366" y="130" fill="#3a3f46" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">3  提交</text>
+  <text x="366" y="156" fill="#3a3f46" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">4  通过后扣库存，不用归还</text>
+</svg>

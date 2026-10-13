@@ -94,7 +94,7 @@ def desk(tmp_path, monkeypatch):
 def test_register_form_defaults_to_instrument_and_list_shows_kind(desk):
     _app, admin, _member = desk
     page = admin.get("/assets")
-    assert "仪器可以借用" in page.text
+    assert "申请借用" in page.text
     assert '<option value="instrument" selected>仪器</option>' in page.text
     assert '<option value="consumable">耗材</option>' in page.text
     assert "没有可借的仪器" in page.text
@@ -360,7 +360,6 @@ def kind_action(html, name):
 def test_admin_can_change_kind_when_stock_is_clear(desk):
     _app, admin, member = desk
     person, _uid = member("林夏同学")
-    assert "超级管理员可以改已登记资产的类型" in admin.get("/assets").text
     assert "资产已登记" in post(admin, "/assets", {
         "name": "空万用表", "kind": "instrument", "category": "工具", "total_qty": "4", "location": "柜", "description": "",
     }).text
