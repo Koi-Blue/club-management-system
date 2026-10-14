@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 168" fill="none">
+  <rect width="680" height="168" rx="12" fill="#f7f8fa"/>
+  <rect x="20" y="20" width="640" height="128" rx="12" fill="#fff" stroke="#e4e6ea"/>
+  <rect x="36" y="36" width="72" height="26" rx="8" fill="#eceff3" stroke="#c5c8ce"/>
+  <text x="50" y="54" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">技术部</text>
+  <rect x="116" y="36" width="72" height="26" rx="8" fill="#fff" stroke="#e4e6ea"/>
+  <text x="130" y="54" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">财务部</text>
+  <rect x="196" y="36" width="72" height="26" rx="8" fill="#fff" stroke="#e4e6ea"/>
+  <text x="210" y="54" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">人事部</text>
+  <rect x="276" y="36" width="72" height="26" rx="8" fill="#fff" stroke="#e4e6ea"/>
+  <text x="290" y="54" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">宣传部</text>
+  <text x="36" y="92" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">手册.pdf</text>
+  <text x="36" y="116" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">图纸.zip</text>
+  <rect x="500" y="100" width="136" height="28" rx="8" fill="#3a3f46"/>
+  <text x="522" y="119" fill="#fff" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">上传到技术部</text>
+</svg>

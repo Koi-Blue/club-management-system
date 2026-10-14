@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 188" fill="none">
+  <rect width="680" height="188" rx="12" fill="#f7f8fa"/>
+  <rect x="20" y="18" width="250" height="152" rx="12" fill="#fff" stroke="#e4e6ea"/>
+  <text x="36" y="44" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">文件</text>
+  <rect x="36" y="52" width="218" height="24" rx="6" fill="#f3f4f6" stroke="#e4e6ea"/>
+  <text x="44" y="68" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">计划.zip</text>
+  <text x="36" y="98" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">可见人</text>
+  <rect x="36" y="108" width="64" height="22" rx="6" fill="#eceff3" stroke="#c5c8ce"/>
+  <text x="48" y="123" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">林夏</text>
+  <rect x="108" y="108" width="64" height="22" rx="6" fill="#eceff3" stroke="#c5c8ce"/>
+  <text x="120" y="123" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">周宁</text>
+  <rect x="180" y="108" width="64" height="22" rx="6" fill="#fff" stroke="#e4e6ea"/>
+  <text x="192" y="123" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">何琪</text>
+  <rect x="36" y="140" width="72" height="20" rx="6" fill="#3a3f46"/>
+  <text x="54" y="154" fill="#fff" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">上传</text>
+  <rect x="310" y="28" width="346" height="52" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="326" y="52" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">计划.zip</text>
+  <text x="326" y="70" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">全选上传 · 全体</text>
+  <rect x="310" y="96" width="346" height="52" rx="10" fill="#fff" stroke="#e4e6ea"/>
+  <text x="326" y="120" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">内部.txt</text>
+  <text x="326" y="138" fill="#6b7078" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">取消何琪 · 林夏、周宁</text>
+</svg>

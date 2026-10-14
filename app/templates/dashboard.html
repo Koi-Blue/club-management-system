@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}首页 · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>{{ me.real_name }}</h1>
+    <p>{{ me.role_text }}{% if me.department %} · {{ me.department }}{% endif %}</p>
+  </div>
+</header>
+{% if todos %}
+<div class="todo">
+  {% for item in todos %}<a data-page-link href="{{ item.href }}">{{ item.text }}</a>{% endfor %}
+</div>
+{% endif %}
+<section class="grid two">
+  <article class="card">
+    <h2>近期活动</h2>
+    {% if upcoming %}
+    <div class="list">
+      {% for item in upcoming %}
+      <a data-page-link class="item" href="/activities/{{ item.id }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.start_at }} {% if item.location %}· {{ item.location }}{% endif %}</p></a>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有已发放的活动。</p>{% endif %}
+  </article>
+  <article class="card">
+    <h2>值班</h2>
+    {% if duties %}
+    <div class="list">
+      {% for item in duties %}<div class="item"><h3>{{ item.duty_on }} · {{ item.name }}</h3><p class="muted">{{ item.note }}</p></div>{% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有值班安排。</p>{% endif %}
+  </article>
+  <article class="card">
+    <h2>公告</h2>
+    {% if news %}
+    <div class="list">
+      {% for item in news %}<div class="item"><h3>{{ item.title }}</h3><p class="muted">{{ item.author }} · {{ item.created_at }}</p><p>{{ item.content }}</p></div>{% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有公告。</p>{% endif %}
+  </article>
+  <article class="card">
+    <h2>我的报销</h2>
+    {% if my_claims %}
+    <div class="list">
+      {% for item in my_claims %}<div class="item"><h3>{{ item.amount }} 元</h3><p class="muted">{{ claim_status[item.status] }} · {{ item.reason }}</p></div>{% endfor %}
+    </div>
+    {% else %}<p class="empty">还没有报销申请。<a data-page-link href="/finance">去提交</a></p>{% endif %}
+  </article>
+</section>
+{% endblock %}
