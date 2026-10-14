@@ -130,6 +130,12 @@ class LibraryFile(Base):
     size: Mapped[int] = mapped_column(Integer)
     uploader_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     uploaded_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+    # approved：按原可见范围展示。旧行没有该列时迁移为 approved，避免突然不可见。
+    status: Mapped[str] = mapped_column(String(20), default="approved", server_default="'approved'")
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    delete_requester_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    delete_requested_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
 
 
 class Asset(Base):

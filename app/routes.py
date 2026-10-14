@@ -405,8 +405,9 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return bounce
         roles = svc.roles_of(db, user.id)
         choices = svc.project_department_choices(user, roles)
-        people = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.real_name)).all()
-        return render(request, "project_new.html", shell(request, db, user, "projects", choices=choices, people=[{"id": row.id, "real_name": row.real_name, "class_name": row.class_name, "checked": row.id == user.id} for row in people]))
+        return render(request, "project_new.html", shell(
+            request, db, user, "projects", choices=choices, people=svc.project_member_options(db, {user.id}),
+        ))
 
     @app.post("/projects")
     async def project_create(request: Request, db: Session = Depends(get_db)):
@@ -478,13 +479,12 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
                 flash(request, "没有权限修改这个立项", "error")
             return redirect(f"/projects/{project_id}")
         member_ids = set(svc.project_member_ids(db, project.id))
-        people = db.scalars(select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.real_name)).all()
         return render(request, "project_edit.html", shell(
             request, db, user, "projects",
             members_only=members_only,
             project={"id": project.id, "title": project.title, "summary": project.summary, "department": project.department},
             choices=svc.project_department_choices(user, roles, project.department) if full else [],
-            people=[{"id": row.id, "real_name": row.real_name, "class_name": row.class_name, "checked": row.id in member_ids} for row in people],
+            people=svc.project_member_options(db, member_ids),
         ))
 
     async def project_action(project_id: int, request: Request, db: Session, action, message: str, *, error_to: str | None = None, success_to: str | None = None):
@@ -579,9 +579,16 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         visible = svc.visible_library_departments(user, roles)
         current = department if department in visible else (visible[0] if visible else "")
         rows = db.scalars(select(LibraryFile).where(LibraryFile.department == current).order_by(LibraryFile.uploaded_at.desc())).all() if current else []
-        names = svc.name_map(db, {row.uploader_id for row in rows})
-        files = [{"id": row.id, "name": row.original_name, "size": row.size, "uploader": names.get(row.uploader_id, "已注销"), "uploaded_at": svc.fmt_dt(row.uploaded_at), "can_delete": row.uploader_id == user.id or svc.can_upload_library(user, roles, current)} for row in rows]
-        return render(request, "library.html", shell(request, db, user, "library", current=current, files=files, can_upload=svc.can_upload_library(user, roles, current) if current else False))
+        visible_rows = [row for row in rows if svc.can_see_library_file(user, roles, row)]
+        names = svc.name_map(db, {row.uploader_id for row in visible_rows})
+        files = [svc.library_file_view(user, roles, row, names.get(row.uploader_id, "已注销")) for row in visible_rows]
+        return render(request, "library.html", shell(
+            request, db, user, "library",
+            current=current,
+            files=files,
+            note=svc.library_note(user, roles),
+            can_upload=svc.can_upload_library(user, roles, current) if current else False,
+        ))
 
     @app.post("/library")
     async def library_upload(request: Request, db: Session = Depends(get_db)):
@@ -598,10 +605,10 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         try:
             if upload is None or not getattr(upload, "filename", ""):
                 raise AppError("请选择文件")
-            svc.save_library_file(db, user, svc.roles_of(db, user.id), settings.upload_dir, department, upload.filename, upload.file)
+            status = svc.save_library_file(db, user, svc.roles_of(db, user.id), settings.upload_dir, department, upload.filename, upload.file)
         except AppError as exc:
             return fail(request, back, exc)
-        flash(request, "资料已放入部门库")
+        flash(request, "资料已放入部门库" if status == "approved" else "已提交，待部长审批")
         return redirect(back)
 
     @app.get("/library/{file_id}")
@@ -611,7 +618,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return bounce
         row = db.get(LibraryFile, file_id)
         roles = svc.roles_of(db, user.id)
-        if row is None or not svc.can_view_library(user, roles, row.department):
+        if row is None or not svc.can_see_library_file(user, roles, row):
             flash(request, "找不到这个文件", "error")
             return redirect("/library")
         path = svc.safe_path(settings.upload_dir, ["library", row.department, row.stored_name])
@@ -632,10 +639,66 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             flash(request, "页面已过期，请刷新后重试", "error")
             return redirect(back)
         try:
-            svc.delete_library_file(db, user, svc.roles_of(db, user.id), settings.upload_dir, file_id)
+            svc.delete_library_file(db, user, svc.roles_of(db, user.id), settings.upload_dir, file_id, str(form.get("password") or ""))
         except AppError as exc:
             return fail(request, back, exc)
         flash(request, "资料已删除")
+        return redirect(back)
+
+    @app.post("/library/{file_id}/review")
+    async def library_review(file_id: int, request: Request, db: Session = Depends(get_db)):
+        form = await form_of(request)
+        user, bounce = guard(request, db)
+        row = db.get(LibraryFile, file_id) if user else None
+        back = f"/library?department={row.department}" if row else "/library"
+        if bounce:
+            return bounce
+        if not csrf_ok(request, str(form.get("csrf") or "")):
+            flash(request, "页面已过期，请刷新后重试", "error")
+            return redirect(back)
+        decision = str(form.get("decision") or "")
+        try:
+            svc.review_library_file(db, user, svc.roles_of(db, user.id), file_id, decision)
+        except AppError as exc:
+            return fail(request, back, exc)
+        flash(request, "资料已通过" if decision == "approved" else "资料已驳回")
+        return redirect(back)
+
+    @app.post("/library/{file_id}/delete-request")
+    async def library_delete_request(file_id: int, request: Request, db: Session = Depends(get_db)):
+        form = await form_of(request)
+        user, bounce = guard(request, db)
+        row = db.get(LibraryFile, file_id) if user else None
+        back = f"/library?department={row.department}" if row else "/library"
+        if bounce:
+            return bounce
+        if not csrf_ok(request, str(form.get("csrf") or "")):
+            flash(request, "页面已过期，请刷新后重试", "error")
+            return redirect(back)
+        try:
+            svc.request_library_delete(db, user, svc.roles_of(db, user.id), file_id, str(form.get("password") or ""))
+        except AppError as exc:
+            return fail(request, back, exc)
+        flash(request, "删除申请已提交，待荣誉社长审核")
+        return redirect(back)
+
+    @app.post("/library/{file_id}/delete-review")
+    async def library_delete_review(file_id: int, request: Request, db: Session = Depends(get_db)):
+        form = await form_of(request)
+        user, bounce = guard(request, db)
+        row = db.get(LibraryFile, file_id) if user else None
+        back = f"/library?department={row.department}" if row else "/library"
+        if bounce:
+            return bounce
+        if not csrf_ok(request, str(form.get("csrf") or "")):
+            flash(request, "页面已过期，请刷新后重试", "error")
+            return redirect(back)
+        decision = str(form.get("decision") or "")
+        try:
+            svc.review_library_delete(db, user, svc.roles_of(db, user.id), settings.upload_dir, file_id, decision)
+        except AppError as exc:
+            return fail(request, back, exc)
+        flash(request, "资料已删除" if decision == "approved" else "已驳回删除申请")
         return redirect(back)
 
     @app.get("/meetings")
@@ -1064,6 +1127,17 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
                 owner = db.get(User, row.user_id)
                 if svc.can_approve_leave(user, roles, owner) and row.user_id != user.id:
                     items.append({"href": "/leave", "kind": "请假", "title": svc.name_of(owner), "meta": f"{row.start_on} 至 {row.end_on}"})
+        minister_depts = svc.minister_departments(roles)
+        if minister_depts:
+            pending_files = db.scalars(select(LibraryFile).where(
+                LibraryFile.status == "pending", LibraryFile.department.in_(minister_depts),
+            ).order_by(LibraryFile.uploaded_at.desc())).all()
+            for row in pending_files:
+                items.append({"href": f"/library?department={row.department}", "kind": "部门资料", "title": row.original_name, "meta": row.department})
+        if "荣誉社长" in roles:
+            delete_files = db.scalars(select(LibraryFile).where(LibraryFile.delete_requester_id.is_not(None)).order_by(LibraryFile.delete_requested_at.desc())).all()
+            for row in delete_files:
+                items.append({"href": f"/library?department={row.department}", "kind": "资料删除", "title": row.original_name, "meta": row.department})
         return render(request, "approvals.html", shell(request, db, user, "approvals", items=items))
 
     @app.get("/profile")

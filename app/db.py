@@ -160,6 +160,11 @@ def init_db(settings: Settings) -> None:
         _add_column(db, "activities", "department", "VARCHAR(40) DEFAULT ''")
         _add_column(db, "assets", "kind", "VARCHAR(20) NOT NULL DEFAULT 'instrument'")
         _add_column(db, "borrows", "purpose", "VARCHAR(20) NOT NULL DEFAULT 'borrow'")
+        _add_column(db, "library_files", "status", "VARCHAR(20) NOT NULL DEFAULT 'approved'")
+        _add_column(db, "library_files", "reviewer_id", "INTEGER")
+        _add_column(db, "library_files", "reviewed_at", "DATETIME")
+        _add_column(db, "library_files", "delete_requester_id", "INTEGER")
+        _add_column(db, "library_files", "delete_requested_at", "DATETIME")
         db.commit()
     finally:
         db.close()

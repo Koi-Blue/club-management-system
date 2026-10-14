@@ -2,7 +2,10 @@
 {% block title %}部门资料 · {{ club_name }}{% endblock %}
 {% block content %}
 <header class="page-head">
-  <div><h1>部门资料库</h1></div>
+  <div>
+    <h1>部门资料库</h1>
+    {% if note %}<p class="muted">{{ note }}</p>{% endif %}
+  </div>
 </header>
 <div class="filters">
   {% for dept in me.library_departments %}<a data-page-link class="{% if current == dept %}on{% endif %}" href="/library?department={{ dept }}">{{ dept }}</a>{% endfor %}
@@ -12,8 +15,43 @@
   <div class="list">
     {% for file in files %}
     <div class="item file-row">
-      <div><a href="/library/{{ file.id }}">{{ file.name }}</a><p class="muted">{{ file.uploader }} · {{ file.uploaded_at }}</p></div>
-      {% if file.can_delete %}<form method="post" action="/library/{{ file.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger" type="submit">删除</button></form>{% endif %}
+      <div>
+        <a href="/library/{{ file.id }}">{{ file.name }}</a>
+        <p class="muted">{{ file.uploader }} · {{ file.uploaded_at }}
+          {% if file.status_label %}<span class="badge badge-{{ file.status }}">{{ file.status_label }}</span>{% endif %}
+          {% if file.pending_delete %}<span class="badge badge-pending">删除待审核</span>{% endif %}
+        </p>
+      </div>
+      <div class="file-actions">
+        {% if file.can_review %}
+        <form method="post" action="/library/{{ file.id }}/review">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="primary" name="decision" value="approved" type="submit">通过</button>
+          <button class="danger" name="decision" value="rejected" type="submit">驳回</button>
+        </form>
+        {% endif %}
+        {% if file.can_review_delete %}
+        <form method="post" action="/library/{{ file.id }}/delete-review">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="danger" name="decision" value="approved" type="submit">通过删除</button>
+          <button class="secondary" name="decision" value="rejected" type="submit">驳回</button>
+        </form>
+        {% endif %}
+        {% if file.can_delete %}
+        <form class="confirm-row" method="post" action="/library/{{ file.id }}/delete">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="password" name="password" required autocomplete="current-password" placeholder="登录密码" aria-label="登录密码">
+          <button class="danger" type="submit">删除</button>
+        </form>
+        {% endif %}
+        {% if file.can_request_delete %}
+        <form class="confirm-row" method="post" action="/library/{{ file.id }}/delete-request">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="password" name="password" required autocomplete="current-password" placeholder="登录密码" aria-label="登录密码">
+          <button class="danger" type="submit">申请删除</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
     {% endfor %}
   </div>

@@ -51,6 +51,16 @@ def managed_departments(roles: list[str]) -> set[str]:
     return found
 
 
+def minister_departments(roles: list[str]) -> set[str]:
+    found = set()
+    for role in roles:
+        if role.endswith("部长"):
+            dept = role_department(role)
+            if dept:
+                found.add(dept)
+    return found
+
+
 def sees_all_business(is_admin: bool, roles: list[str]) -> bool:
     return is_admin
 
