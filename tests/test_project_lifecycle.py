@@ -143,8 +143,9 @@ def test_only_leader_can_edit_submit_or_delete_draft(club):
     assert "巡线车" in edit_form
     assert "嵌入式" in edit_form
     assert ">技术部</option>" in edit_form
-    assert "财务部" not in edit_form
-    assert "宣传部" not in edit_form
+    assert "<option>财务部</option>" not in edit_form
+    assert "<option>宣传部</option>" not in edit_form
+    assert "宣传部 ·" in edit_form
     assert f'value="{tech_id}"' in edit_form and "checked" in edit_form
     assert "请勾选关联成员" in post(tech, f"{project_path}/edit", {
         "title": "巡线车", "summary": "嵌入式", "department": "技术部",

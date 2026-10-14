@@ -51,6 +51,7 @@ from app.org import (
     has_role,
     home_departments,
     managed_departments,
+    minister_departments,
     sees_all_business,
     sees_all_projects,
     sees_club_operations,
@@ -259,6 +260,12 @@ def nav_badge_snapshot(db: Session) -> dict:
         select(Activity.creator_id, func.count()).where(Activity.status == "draft").group_by(Activity.creator_id)
     ).all()
     draft_by_creator = {int(creator_id): int(count) for creator_id, count in draft_rows}
+    library_rows = db.execute(
+        select(LibraryFile.department, func.count()).where(LibraryFile.status == "pending").group_by(LibraryFile.department)
+    ).all()
+    pending_library_deletes = int(db.scalar(
+        select(func.count()).select_from(LibraryFile).where(LibraryFile.delete_requester_id.is_not(None))
+    ) or 0)
     data = {
         "pending_users": pending_users,
         "pending_projects": pending_projects,
@@ -267,6 +274,8 @@ def nav_badge_snapshot(db: Session) -> dict:
         "pending_leaves": pending_leaves,
         "draft_activities": sum(draft_by_creator.values()),
         "draft_by_creator": draft_by_creator,
+        "pending_library_by_department": {str(dept): int(count) for dept, count in library_rows},
+        "pending_library_deletes": pending_library_deletes,
     }
     with _cache_lock:
         if _badge_gen.get(scope, 0) == generation:
@@ -298,6 +307,11 @@ def approval_count(db: Session, user: User, roles: list[str]) -> int:
         total += snap["pending_reimbursements"]
     if user.is_admin or "社长" in roles or "副社长" in roles or "指导老师" in roles or managed_departments(roles):
         total += snap["pending_leaves"]
+    for dept, count in snap.get("pending_library_by_department", {}).items():
+        if dept in minister_departments(roles):
+            total += int(count)
+    if "荣誉社长" in roles:
+        total += int(snap.get("pending_library_deletes", 0))
     return total
 
 
@@ -376,13 +390,17 @@ def can_view_activity(user: User, roles: list[str], activity: Activity) -> bool:
 
 
 def can_view_library(user: User, roles: list[str], department: str) -> bool:
-    if sees_all_business(user.is_admin, roles) or has_role(roles, "社长", "副社长", "指导老师"):
+    if sees_all_business(user.is_admin, roles) or has_role(roles, "社长", "副社长", "指导老师", "荣誉社长"):
         return True
     return department in user_departments(user, roles) or department in managed_departments(roles)
 
 
 def can_upload_library(user: User, roles: list[str], department: str) -> bool:
-    return user.is_admin or "社长" in roles or department in managed_departments(roles)
+    if department not in DEPARTMENTS:
+        return False
+    if user.is_admin or "荣誉社长" in roles:
+        return True
+    return department in user_departments(user, roles)
 
 
 def can_view_meeting(user: User, roles: list[str], meeting: Meeting) -> bool:
@@ -406,7 +424,7 @@ def can_approve_leave(user: User, roles: list[str], owner: User | None) -> bool:
 
 
 def visible_library_departments(user: User, roles: list[str]) -> list[str]:
-    if sees_all_business(user.is_admin, roles) or has_role(roles, "社长", "副社长", "指导老师"):
+    if sees_all_business(user.is_admin, roles) or has_role(roles, "社长", "副社长", "指导老师", "荣誉社长"):
         return list(DEPARTMENTS)
     found = user_departments(user, roles) | managed_departments(roles)
     return [dept for dept in DEPARTMENTS if dept in found]
@@ -594,7 +612,27 @@ def ensure_project_department(user: User, roles: list[str], department: str, *, 
         raise AppError("只能在自己的部门立项")
 
 
+def project_member_candidates(db: Session) -> list[User]:
+    return list(db.scalars(
+        select(User).where(User.status == "active", User.is_admin.is_(False)).order_by(User.department, User.real_name, User.id)
+    ).all())
+
+
+def project_member_options(db: Session, checked_ids: set[int]) -> list[dict]:
+    return [
+        {
+            "id": row.id,
+            "real_name": row.real_name,
+            "class_name": row.class_name,
+            "department": row.department,
+            "checked": row.id in checked_ids,
+        }
+        for row in project_member_candidates(db)
+    ]
+
+
 def active_member_ids(db: Session, member_ids: list[int]) -> list[int]:
+    """任意部门的已启用、非超级管理员账号都可以作为关联成员。"""
     selected = []
     for raw in member_ids:
         if raw in selected:
@@ -962,26 +1000,160 @@ def delete_project_file(db: Session, user: User, roles: list[str], upload_dir: s
     db.commit()
 
 
-def save_library_file(db: Session, user: User, roles: list[str], upload_dir: str, department: str, filename: str, source) -> None:
+def library_status(row: LibraryFile) -> str:
+    # 旧资料没有审批状态时视为已通过，避免上线后突然不可见。
+    value = (getattr(row, "status", None) or "").strip()
+    if value in {"pending", "approved", "rejected"}:
+        return value
+    return "approved"
+
+
+def can_see_library_file(user: User, roles: list[str], row: LibraryFile) -> bool:
+    if library_status(row) == "approved":
+        return can_view_library(user, roles, row.department)
+    if "荣誉社长" in roles or row.uploader_id == user.id:
+        return True
+    return row.department in minister_departments(roles)
+
+
+def library_file_view(user: User, roles: list[str], row: LibraryFile, uploader: str) -> dict:
+    status = library_status(row)
+    pending_delete = row.delete_requester_id is not None
+    honor = "荣誉社长" in roles
+    minister = row.department in minister_departments(roles)
+    if status == "pending":
+        label = "待部长审批"
+    elif status == "rejected":
+        label = "已驳回"
+    else:
+        label = ""
+    return {
+        "id": row.id,
+        "name": row.original_name,
+        "size": row.size,
+        "uploader": uploader,
+        "uploaded_at": fmt_dt(row.uploaded_at),
+        "status": status,
+        "status_label": label,
+        "pending_delete": pending_delete,
+        "can_review": status == "pending" and minister,
+        "can_review_delete": pending_delete and honor,
+        "can_delete": honor and not pending_delete,
+        "can_request_delete": (not honor) and minister and (not pending_delete) and status in {"approved", "rejected"},
+    }
+
+
+def library_note(user: User, roles: list[str]) -> str:
+    honor = "荣誉社长" in roles
+    minister = bool(minister_departments(roles))
+    if honor and minister:
+        return "可查看、上传任意部门资料。待审批资料可以通过或驳回；删除时填写登录密码。"
+    if honor:
+        return "可查看、上传任意部门资料。删除时填写登录密码。"
+    if minister:
+        return "成员上传后需通过才对部门可见。申请删除需填写登录密码，由荣誉社长审核。"
+    if not user.is_admin and any(can_upload_library(user, roles, dept) for dept in DEPARTMENTS):
+        return "上传后需部长通过，才会在部门里显示。"
+    return ""
+
+
+def _library_upload_status(user: User, roles: list[str]) -> str:
+    if user.is_admin or "荣誉社长" in roles:
+        return "approved"
+    return "pending"
+
+
+def save_library_file(db: Session, user: User, roles: list[str], upload_dir: str, department: str, filename: str, source) -> str:
     if department not in DEPARTMENTS or not can_upload_library(user, roles, department):
         raise AppError("没有权限上传这个部门的资料")
+    status = _library_upload_status(user, roles)
     with upload_slot():
         stored, original, size = _store_file(upload_dir, ["library", department], filename, source)
-    db.add(LibraryFile(department=department, stored_name=stored, original_name=original, size=size, uploader_id=user.id))
+    db.add(LibraryFile(
+        department=department, stored_name=stored, original_name=original, size=size,
+        uploader_id=user.id, status=status,
+    ))
     db.commit()
+    invalidate_nav_badges(db)
+    return status
 
 
-def delete_library_file(db: Session, user: User, roles: list[str], upload_dir: str, file_id: int) -> None:
-    row = db.get(LibraryFile, file_id)
-    if row is None or not can_view_library(user, roles, row.department):
-        raise AppError("找不到这个文件")
-    if user.id != row.uploader_id and not can_upload_library(user, roles, row.department):
-        raise AppError("没有权限删除这个文件")
+def require_login_password(user: User, password: str) -> None:
+    given = password or ""
+    if not given.strip():
+        raise AppError("请输入登录密码")
+    if not verify_password(given, user.password_hash):
+        raise AppError("密码不正确")
+
+
+def _remove_library_file(db: Session, upload_dir: str, row: LibraryFile) -> None:
     path = safe_path(upload_dir, ["library", row.department, row.stored_name])
     if path.exists():
         path.unlink()
     db.delete(row)
     db.commit()
+    invalidate_nav_badges(db)
+
+
+def review_library_file(db: Session, user: User, roles: list[str], file_id: int, decision: str) -> None:
+    row = db.get(LibraryFile, file_id)
+    if row is None or not can_see_library_file(user, roles, row):
+        raise AppError("找不到这个文件")
+    if library_status(row) != "pending":
+        raise AppError("当前资料不需要审批")
+    if row.department not in minister_departments(roles):
+        raise AppError("没有权限审批这份资料")
+    if decision not in {"approved", "rejected"}:
+        raise AppError("审批结果不正确")
+    row.status = decision
+    row.reviewer_id = user.id
+    row.reviewed_at = utcnow()
+    db.commit()
+    invalidate_nav_badges(db)
+
+
+def delete_library_file(db: Session, user: User, roles: list[str], upload_dir: str, file_id: int, password: str) -> None:
+    row = db.get(LibraryFile, file_id)
+    if row is None or not can_see_library_file(user, roles, row):
+        raise AppError("找不到这个文件")
+    if "荣誉社长" not in roles:
+        raise AppError("没有权限删除这份资料")
+    require_login_password(user, password)
+    _remove_library_file(db, upload_dir, row)
+
+
+def request_library_delete(db: Session, user: User, roles: list[str], file_id: int, password: str) -> None:
+    row = db.get(LibraryFile, file_id)
+    if row is None or not can_see_library_file(user, roles, row):
+        raise AppError("找不到这个文件")
+    if "荣誉社长" in roles or row.department not in minister_departments(roles):
+        raise AppError("没有权限申请删除这份资料")
+    if library_status(row) not in {"approved", "rejected"}:
+        raise AppError("这份资料还不能申请删除")
+    if row.delete_requester_id is not None:
+        raise AppError("删除申请已提交")
+    require_login_password(user, password)
+    row.delete_requester_id = user.id
+    row.delete_requested_at = utcnow()
+    db.commit()
+    invalidate_nav_badges(db)
+
+
+def review_library_delete(db: Session, user: User, roles: list[str], upload_dir: str, file_id: int, decision: str) -> None:
+    if "荣誉社长" not in roles:
+        raise AppError("没有权限审核删除")
+    row = db.get(LibraryFile, file_id)
+    if row is None or row.delete_requester_id is None:
+        raise AppError("没有待审核的删除申请")
+    if decision not in {"approved", "rejected"}:
+        raise AppError("审批结果不正确")
+    if decision == "rejected":
+        row.delete_requester_id = None
+        row.delete_requested_at = None
+        db.commit()
+        invalidate_nav_badges(db)
+        return
+    _remove_library_file(db, upload_dir, row)
 
 
 ASSET_KINDS = {"instrument": "仪器", "consumable": "耗材"}

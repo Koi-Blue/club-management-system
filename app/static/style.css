@@ -240,7 +240,10 @@ button.danger {
   border-radius: 0.9rem; padding: 0.45rem 0.8rem; display: inline-block;
 }
 .empty { color: var(--muted); padding: 0.2rem 0; }
-.file-row { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.file-row { display: flex; justify-content: space-between; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.file-actions { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+.file-actions form { display: flex; gap: 0.4rem; align-items: center; margin: 0; }
+.confirm-row input[type="password"] { width: 8.5rem; padding: 0.48rem 0.65rem; }
 hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .tree details { margin: 0.2rem 0 0.2rem 0.15rem; padding-left: 0.85rem; border-left: 1px solid #d5d8de; }
 .tree summary {
