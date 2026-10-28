@@ -156,6 +156,17 @@ def init_db(settings: Settings) -> None:
         _add_column(db, "users", "class_name", "VARCHAR(40) DEFAULT ''")
         _add_column(db, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
         _add_column(db, "projects", "department", "VARCHAR(40) DEFAULT ''")
+        # Only this first migration backfills the manager. Later nulls are intentional,
+        # and inactive historical creators must never be silently reactivated.
+        manager_missing = "manager_id" not in _column_names("projects")
+        _add_column(db, "projects", "manager_id", "INTEGER REFERENCES users(id)")
+        _add_column(db, "projects", "execution_enabled", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(db, "projects", "execution_version", "INTEGER NOT NULL DEFAULT 1")
+        if manager_missing:
+            db.execute(text("UPDATE projects SET manager_id = leader_id WHERE leader_id IN "
+                            "(SELECT id FROM users WHERE status = 'active')"))
+        if db.get(Setting, "project_execution_schema") is None:
+            db.add(Setting(key="project_execution_schema", value="1"))
         _add_column(db, "project_files", "visibility", "VARCHAR(20) NOT NULL DEFAULT 'all'")
         _add_column(db, "activities", "department", "VARCHAR(40) DEFAULT ''")
         _add_column(db, "assets", "kind", "VARCHAR(20) NOT NULL DEFAULT 'instrument'")

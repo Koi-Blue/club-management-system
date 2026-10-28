@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ club_name }}{% endblock %}</title>
   <link rel="icon" href="/static/favicon.svg">
-  <link rel="stylesheet" href="/static/style.css?v=20261014-library">
+  <link rel="stylesheet" href="/static/style.css?v=20261028-project-execution">
   <script src="/static/navigation.js?v=20261013-guide" defer></script>
 </head>
 <body>
@@ -34,7 +34,7 @@
         <a class="{% if nav == 'leave' %}active{% endif %}" href="/leave"><svg viewBox="0 0 24 24"><path d="M8 3h8M6 7h12v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zM9 12h6"/></svg><span>请假</span></a>
         <a class="{% if nav == 'duty' %}active{% endif %}" href="/duty"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg><span>值班</span></a>
         <p>资料</p>
-        <a class="{% if nav == 'projects' %}active{% endif %}" href="/projects"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/></svg><span>立项</span></a>
+        <a class="{% if nav == 'projects' %}active{% endif %}" href="/projects"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/></svg><span>项目</span></a>
         <a class="{% if nav == 'library' %}active{% endif %}" href="/library"><svg viewBox="0 0 24 24"><path d="M6 4h9a3 3 0 0 1 3 3v13H8a2 2 0 0 0-2 2zM6 4v16"/></svg><span>部门资料</span></a>
         <a class="{% if nav == 'meetings' %}active{% endif %}" href="/meetings"><svg viewBox="0 0 24 24"><path d="M7 4h10v16H7zM10 8h4M10 12h4M10 16h2"/></svg><span>会议纪要</span></a>
         <p>交流</p>

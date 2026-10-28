@@ -1,20 +1,21 @@
 {% extends "base.html" %}
-{% block title %}立项 · {{ club_name }}{% endblock %}
+{% block title %}项目 · {{ club_name }}{% endblock %}
 {% block content %}
 <header class="page-head">
-  <div><h1>立项</h1></div>
+  <div><h1>项目</h1><p class="muted">立项审批、项目团队与执行计划</p></div>
+  <a data-page-link class="secondary" href="/project-todos">我的任务与验收</a>
   <a data-page-link class="button" href="/projects/new">新建立项</a>
 </header>
 <section class="card">
   {% if projects %}
   <table>
-    <thead><tr><th>项目</th><th>部门</th><th>立项人</th><th>状态</th><th>更新</th></tr></thead>
+    <thead><tr><th>项目</th><th>部门</th><th>立项人 / 执行负责人</th><th>状态</th><th>更新</th></tr></thead>
     <tbody>
       {% for item in projects %}
       <tr>
-        <td><a data-page-link href="/projects/{{ item.id }}">{{ item.title }}</a></td>
+        <td><a data-page-link href="/projects/{{ item.id }}">{{ item.title }}</a><p><a data-page-link href="/projects/{{ item.id }}/execution">{% if item.execution_enabled %}执行工作台{% else %}编制执行计划{% endif %}</a></p></td>
         <td>{{ item.department }}</td>
-        <td>{{ item.leader }}</td>
+        <td>{{ item.leader }}<p class="muted">执行：{{ item.manager }}</p></td>
         <td><span class="badge badge-{{ item.status }}">{{ project_status[item.status] }}</span></td>
         <td>{{ item.updated_at }}</td>
       </tr>

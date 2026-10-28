@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "project_execution_macros.html" import tokens, person_select %}
+{% block title %}{{ '编辑里程碑' if milestone else '添加里程碑' }} · {{ execution.project.title }}{% endblock %}
+{% block content %}
+{% set meta = execution.milestone_meta[milestone.id] if milestone else {} %}
+<header class="page-head"><div><h1>{{ '编辑里程碑' if milestone else '添加里程碑' }}</h1><p class="muted">里程碑关联任务及通过标准，必须独立验收，不计入任务平均进度。</p></div><a data-page-link href="{{ base }}">返回工作台</a></header>
+<form class="card form-grid execution-form" method="post" action="{{ base }}/milestones{% if milestone %}/{{ milestone.id }}/edit{% endif %}">
+  {{ tokens(csrf, milestone.version if milestone else '') }}
+  <label class="field span-2"><span>里程碑名称</span><input name="title" value="{{ milestone.title if milestone else '' }}" required maxlength="160"></label>
+  <label class="field"><span>所属阶段</span><select name="stage_id"><option value="">跨阶段</option>{% for stage in execution.stages %}<option value="{{ stage.id }}" {% if milestone and milestone.stage_id == stage.id %}selected{% endif %}>{{ stage.title }}</option>{% endfor %}</select></label>
+  <label class="field"><span>计划日期</span><input type="date" name="planned_date" value="{{ milestone.planned_date if milestone else '' }}" required></label>
+  {{ person_select(execution.people, 'owner_id', '成果负责人', milestone.owner_id if milestone else none) }}
+  {{ person_select(execution.reviewers, 'reviewer_id', '验收人（不能是成果负责人）', milestone.reviewer_id if milestone else none) }}
+  <label class="field span-2"><span>验收标准</span><textarea name="acceptance_criteria" required maxlength="4000" placeholder="例如：精度指标满足规格书，测试数据与报告已归档">{{ milestone.acceptance_criteria if milestone else '' }}</textarea></label>
+  <fieldset class="execution-fieldset span-2"><legend>关联任务（至少选择一项）</legend><p class="muted">关联的有效任务全部完成后才能提交验收；关键任务需要先通过任务验收。</p><div class="execution-choices">{% for task in execution.tasks %}<label><input type="checkbox" name="task_ids" value="{{ task.id }}" {% if task.id in meta.get('task_ids', []) %}checked{% endif %}>{{ task.title }}</label>{% else %}<p>请先在工作台添加任务，再建立里程碑。</p>{% endfor %}</div></fieldset>
+  {% if milestone %}<label class="field span-2"><span>本次变更原因</span><textarea name="reason" required maxlength="2000"></textarea></label>{% endif %}
+  <div class="actions span-2"><button class="primary" type="submit">{{ '保存变更' if milestone else '添加里程碑' }}</button><a data-page-link class="secondary" href="{{ base }}">取消</a></div>
+</form>
+{% endblock %}

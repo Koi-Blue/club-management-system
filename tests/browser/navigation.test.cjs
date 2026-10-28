@@ -8,7 +8,7 @@ const { chromium } = require(process.env.CLUB_PLAYWRIGHT_MODULE || 'playwright')
 
 const root = path.resolve(__dirname, '../..');
 const temp = mkdtempSync(path.join(tmpdir(), 'club-browser-'));
-const python = process.env.CLUB_TEST_PYTHON || path.join(root, '.venv/bin/python');
+const python = process.env.CLUB_TEST_PYTHON || path.join(root, process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python');
 const base = 'http://127.0.0.1:18765';
 const env = { ...process.env, SECRET_KEY: 'browser-test-secret-0123456789', ADMIN_USERNAME: 'admin', ADMIN_PASSWORD: 'browser123',
   DATABASE_URL: `sqlite:///${temp}/club.db`, UPLOAD_DIR: `${temp}/uploads`, CAPTCHA_DISABLED: '1' };
@@ -25,6 +25,7 @@ from app.org import CLUB_ROLES
 from app.security import hash_password
 from app.services import save_library_file
 import os
+from io import BytesIO
 with SessionLocal() as db:
     for i, role in enumerate(CLUB_ROLES):
         user = User(username=f'person{i}', password_hash=hash_password('testpass'), real_name=f'测试成员{i}', college='信息学院', class_name='机器人2401', phone='13800138000', department='技术部', status='active')
@@ -33,10 +34,10 @@ with SessionLocal() as db:
         db.add(ForumPost(author_id=1, title=f'技术讨论 {i}', body='## 计划\\n\\n- 硬件\\n- 软件', scope='club'))
         db.add(Journal(user_id=1, title=f'实验日记 {i}', body='**实验内容**'))
     db.commit()
-    save_library_file(db, db.get(User, 1), [], os.environ['UPLOAD_DIR'], '技术部', '资料.txt', b'test document')
-`], { cwd: root, env, encoding: 'utf8' });
+    save_library_file(db, db.get(User, 1), [], os.environ['UPLOAD_DIR'], '技术部', '资料.txt', BytesIO(b'test document'))
+`], { cwd: root, env, encoding: 'utf8', windowsHide: true });
   assert.equal(seed.status, 0, seed.stderr);
-  server = spawn(python, ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18765'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  server = spawn(python, ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18765'], { cwd: root, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   server.stdout.on('data', chunk => { logs += chunk; });
   server.stderr.on('data', chunk => { logs += chunk; });
   let ready = false;
@@ -51,12 +52,18 @@ with SessionLocal() as db:
 
 after(async () => {
   await browser?.close();
-  if (server) {
+  if (server && server.exitCode === null) {
     const closed = new Promise(resolve => server.once('exit', resolve));
-    server.kill('SIGTERM');
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/PID', String(server.pid), '/T', '/F'], { windowsHide: true });
+    } else {
+      server.kill('SIGTERM');
+    }
     await closed;
   }
-  rmSync(temp, { recursive: true, force: true });
+  assert(path.resolve(temp).startsWith(path.resolve(tmpdir()) + path.sep));
+  assert(path.basename(temp).startsWith('club-browser-'));
+  rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function loggedIn(t, mobile = false) {
@@ -91,8 +98,10 @@ async function touchSwipe(page, dx) {
   const client = await page.context().newCDPSession(page);
   await page.locator('.main').evaluate(el => { el.scrollTop = 0; });
   const rect = await page.locator('.main .page-head').boundingBox();
-  const x = dx < 0 ? 310 : 70;
-  const y = rect.y + rect.height - 5;
+  const x = dx < 0 ? 230 : 70;
+  // Start in the gap below the heading, not on its right-hand action button.
+  const y = rect.y + rect.height + 6;
+  assert(await page.evaluate(({x,y}) => !document.elementFromPoint(x,y).closest('a, button, input, textarea, select, label, details, table, pre, .prose, .org-chart'), {x,y}));
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
   for (let i = 1; i <= 5; i++) await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * i / 5, y }] });
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });

@@ -55,6 +55,7 @@ from app.services import AppError
 import app.services as svc
 import app.forum as forum
 import app.reimbursements as claims_svc
+import app.project_execution as execution
 
 PROJECT_STATUS = {"draft": "草稿", "pending": "待审批", "approved": "进行中", "rejected": "已驳回", "archived": "已归档"}
 ACTIVITY_STATUS = {"draft": "待发放", "published": "已发放", "rejected": "已驳回", "closed": "已结束"}
@@ -294,6 +295,11 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             todos.append({"href": "/approvals", "text": "有活动待发放"})
         if sees_finance(user.is_admin, roles) and db.scalar(select(func.count()).select_from(Reimbursement).where(Reimbursement.status == "pending")):
             todos.append({"href": "/finance", "text": "有报销待审批"})
+        work = execution.personal_work(db, user, roles)
+        if work["tasks"] or work["milestones"]:
+            todos.append({"href": "/project-todos", "text": f"我的项目待办：{len(work['tasks'])} 个任务、{len(work['milestones'])} 个里程碑"})
+        if work["reviews"]:
+            todos.append({"href": "/project-todos", "text": f"待我验收：{len(work['reviews'])} 项"})
         return render(request, "dashboard.html", shell(
             request, db, user, "home",
             todos=todos,
@@ -394,8 +400,8 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             return bounce
         roles = svc.roles_of(db, user.id)
         rows = [row for row in db.scalars(select(Project).order_by(Project.updated_at.desc())).all() if svc.can_view_project(db, user, roles, row)]
-        names = svc.name_map(db, {row.leader_id for row in rows})
-        projects = [{"id": row.id, "title": row.title, "department": row.department, "status": row.status, "leader": names.get(row.leader_id, "已注销"), "updated_at": svc.fmt_dt(row.updated_at)} for row in rows]
+        names = svc.name_map(db, {uid for row in rows for uid in (row.leader_id, row.manager_id) if uid})
+        projects = [{"id": row.id, "title": row.title, "department": row.department, "status": row.status, "leader": names.get(row.leader_id, "已注销"), "manager": names.get(row.manager_id, "待指定"), "execution_enabled": row.execution_enabled, "updated_at": svc.fmt_dt(row.updated_at)} for row in rows]
         return render(request, "projects.html", shell(request, db, user, "projects", projects=projects))
 
     @app.get("/projects/new")
@@ -451,8 +457,13 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
             "can_delete": manageable,
             "can_withdraw": svc.can_withdraw_project(db, user, project),
             "can_review": can_approve_project(user.is_admin, roles) and project.status == "pending",
-            "can_archive": project.status == "approved" and (svc.project_related(db, user, project) or can_approve_project(user.is_admin, roles)),
-            "can_upload": svc.project_related(db, user, project) or sees_all_projects(roles),
+            "can_archive": project.status == "approved" and (
+                (project.manager_id == user.id or can_approve_project(user.is_admin, roles)) if project.execution_enabled
+                else (svc.project_related(db, user, project) or can_approve_project(user.is_admin, roles))
+            ),
+            "can_upload": (svc.project_related(db, user, project) or sees_all_projects(roles))
+                and not (project.execution_enabled and project.status == "archived"),
+            "execution_enabled": project.execution_enabled,
             "members": svc.project_member_names(db, project.id),
             "audience": svc.project_audience(db, project),
             "files": svc.project_files_for(db, user, roles, project),
@@ -499,6 +510,7 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         try:
             action(user, svc.roles_of(db, user.id), form)
         except AppError as exc:
+            db.rollback()
             return fail(request, error_to or back, exc)
         flash(request, message)
         return redirect(success_to or back)
@@ -1304,3 +1316,6 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
     @app.exception_handler(404)
     async def not_found(request: Request, _exc):
         return render(request, "not_found.html", {"club_name": "社团", "flash": None}, status_code=404)
+
+    from app.project_execution_routes import register_execution_routes
+    register_execution_routes(app, settings, guard, shell, render, redirect, flash, csrf_ok, fail)

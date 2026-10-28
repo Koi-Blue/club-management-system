@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -86,6 +86,9 @@ class Project(Base):
     department: Mapped[str] = mapped_column(String(40), default="", index=True)
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     leader_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    execution_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="0")
+    execution_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     review_comment: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
@@ -98,6 +101,112 @@ class ProjectMember(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+
+class ProjectStage(Base):
+    __tablename__ = "project_stages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    title: Mapped[str] = mapped_column(String(100))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class ProjectTask(Base):
+    __tablename__ = "project_tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    stage_id: Mapped[int] = mapped_column(ForeignKey("project_stages.id"), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    planned_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    planned_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    actual_start: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    actual_end: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    deliverable: Mapped[str] = mapped_column(Text, default="")
+    acceptance_criteria: Mapped[str] = mapped_column(Text, default="")
+    is_key: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[str] = mapped_column(String(10), default="medium")
+    status: Mapped[str] = mapped_column(String(20), default="todo", index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    blocked_reason: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+
+
+class TaskCollaborator(Base):
+    __tablename__ = "task_collaborators"
+    __table_args__ = (UniqueConstraint("task_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("project_tasks.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class TaskDependency(Base):
+    __tablename__ = "task_dependencies"
+    __table_args__ = (UniqueConstraint("task_id", "predecessor_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("project_tasks.id"), index=True)
+    predecessor_id: Mapped[int] = mapped_column(ForeignKey("project_tasks.id"), index=True)
+
+
+class ProjectMilestone(Base):
+    __tablename__ = "project_milestones"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    stage_id: Mapped[int | None] = mapped_column(ForeignKey("project_stages.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(160))
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    reviewer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    planned_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    actual_date: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    acceptance_criteria: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="todo")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class MilestoneTask(Base):
+    __tablename__ = "milestone_tasks"
+    __table_args__ = (UniqueConstraint("milestone_id", "task_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    milestone_id: Mapped[int] = mapped_column(ForeignKey("project_milestones.id"), index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("project_tasks.id"), index=True)
+
+
+class ProjectSubmission(Base):
+    __tablename__ = "project_submissions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("project_tasks.id"), nullable=True, index=True)
+    milestone_id: Mapped[int | None] = mapped_column(ForeignKey("project_milestones.id"), nullable=True, index=True)
+    submitter_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    reviewer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    note: Mapped[str] = mapped_column(Text)
+    criteria_snapshot: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    review_comment: Mapped[str] = mapped_column(Text, default="")
+    submitted_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+
+
+class SubmissionFile(Base):
+    __tablename__ = "submission_files"
+    __table_args__ = (UniqueConstraint("submission_id", "file_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    submission_id: Mapped[int] = mapped_column(ForeignKey("project_submissions.id"), index=True)
+    file_id: Mapped[int] = mapped_column(ForeignKey("project_files.id"), index=True)
+
+
+class ProjectEvent(Base):
+    __tablename__ = "project_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[str] = mapped_column(String(40))
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utcnow)
 
 
 class ProjectFile(Base):

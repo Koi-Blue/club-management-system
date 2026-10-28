@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "project_execution_macros.html" import tokens, files_picker, history %}
+{% block title %}{{ task.title }} · 项目任务{% endblock %}
+{% block content %}
+{% set p = execution.project %}{% set meta = execution.task_meta[task.id] %}
+<header class="page-head"><div><p class="eyebrow">{{ execution.stage_names.get(task.stage_id, '项目任务') }}</p><h1>{{ task.title }}</h1><p class="muted">{{ p.title }} · {{ task_status.get(task.status, task.status) }}{% if task.is_key %} · 关键任务{% endif %}</p></div><div class="actions"><a data-page-link class="secondary" href="{{ base }}">返回工作台</a>{% if execution.can_manage and task.status not in ['done', 'review', 'cancelled'] %}<a data-page-link class="secondary" href="{{ base }}/tasks/{{ task.id }}/edit">调整计划</a>{% endif %}</div></header>
+{% if not p.execution_enabled %}<p class="flash warn">此项目尚未启用执行管理。当前仅编制计划，启用后才可更新任务进展。</p>{% elif p.status != 'approved' %}<p class="flash warn">{{ '项目已归档，记录只读。' if p.status == 'archived' else '立项审批通过后才可更新任务进展。' }}</p>{% endif %}
+<section class="card">
+  <dl class="execution-facts"><div><dt>主负责人</dt><dd>{{ execution.names.get(task.owner_id, '待指定') }}</dd></div><div><dt>执行进度</dt><dd>{{ task.progress }}%</dd></div><div><dt>计划日期</dt><dd>{{ task.planned_start or '待排期' }} → {{ task.planned_end or '待排期' }}</dd></div><div><dt>优先级</dt><dd>{{ priorities.get(task.priority, task.priority) }}</dd></div><div><dt>实际开工</dt><dd>{{ meta.actual_start or '尚未开工' }}</dd></div><div><dt>实际完成</dt><dd>{{ meta.actual_end or '尚未完成' }}</dd></div>{% if task.is_key %}<div><dt>验收人</dt><dd>{{ execution.names.get(task.reviewer_id, '待指定') }}</dd></div>{% endif %}</dl>
+  {% if meta.overdue %}<p class="execution-warning">任务已逾期，请更新进展或由执行负责人调整计划并说明原因。</p>{% endif %}
+  {% if task.blocked_reason %}<p class="execution-text"><strong>当前受阻：</strong>{{ task.blocked_reason }}</p>{% endif %}
+  <h2>交付物</h2><p class="execution-text">{{ task.deliverable }}</p>
+  {% if task.acceptance_criteria %}<h2>验收标准</h2><p class="execution-text">{{ task.acceptance_criteria }}</p>{% endif %}
+  {% if meta.collaborator_ids %}<p>协作人：{% for uid in meta.collaborator_ids %}{{ execution.names.get(uid, '已停用成员') }}{% if not loop.last %}、{% endif %}{% endfor %}</p>{% endif %}
+  {% if meta.predecessor_ids %}<h2>前置任务</h2><ul>{% for other in execution.tasks %}{% if other.id in meta.predecessor_ids %}<li><a data-page-link href="{{ base }}/tasks/{{ other.id }}">{{ other.title }}</a> · {{ task_status.get(other.status, other.status) }}</li>{% endif %}{% endfor %}</ul>{% endif %}
+  {% if meta.warnings %}{% for warning in meta.warnings %}<p class="flash warn">{{ warning }}</p>{% endfor %}{% endif %}
+</section>
+{% if meta.can_update %}
+<section class="card execution-section"><h2>更新进展</h2><form class="form-grid" method="post" action="{{ base }}/tasks/{{ task.id }}/progress">
+  {{ tokens(csrf, task.version) }}
+  <label class="field"><span>任务状态</span><select name="status"><option value="todo" {% if task.status == 'todo' %}selected{% endif %}>未开始</option><option value="doing" {% if task.status == 'doing' %}selected{% endif %}>进行中</option>{% if not task.is_key %}<option value="done">已完成</option>{% endif %}</select></label>
+  <label class="field"><span>完成进度（%）</span><input name="progress" type="number" min="0" max="100" value="{{ task.progress }}" required></label>
+  <label class="field span-2"><span>进展说明</span><textarea name="note" required maxlength="4000" placeholder="本次完成了什么，下一步是什么"></textarea></label>
+  <label class="field span-2"><span>受阻原因（留空表示当前未受阻）</span><textarea name="blocked_reason" maxlength="2000">{{ task.blocked_reason }}</textarea></label>
+  <div class="actions span-2"><button class="primary" type="submit">记录进展</button></div>
+</form></section>
+{% endif %}
+{% if meta.can_submit %}
+<section class="card execution-section"><h2>提交关键成果</h2><p class="muted">提交后进入待验收，只有指定验收人可以通过或退回。填写 100% 不会直接完成关键任务。</p><form class="stack" method="post" action="{{ base }}/tasks/{{ task.id }}/submit">{{ tokens(csrf, task.version) }}<label class="field"><span>交付说明</span><textarea name="note" required maxlength="4000"></textarea></label>{{ files_picker(execution.files) }}<div class="actions"><button class="primary" type="submit">提交验收</button><a data-page-link class="secondary" href="/projects/{{ p.id }}">上传项目资料</a></div></form></section>
+{% endif %}
+{% if meta.can_review %}
+<section class="card execution-section"><h2>验收本次成果</h2><form class="stack" method="post" action="{{ base }}/tasks/{{ task.id }}/review">{{ tokens(csrf, task.version) }}<label class="field"><span>验收意见</span><textarea name="comment" required maxlength="4000" placeholder="说明符合哪些标准，或需要修改的具体内容"></textarea></label><div class="actions"><button class="primary" name="decision" value="approved" type="submit">验收通过</button><button class="secondary" name="decision" value="rejected" type="submit">退回修改</button></div></form></section>
+{% endif %}
+{{ history(meta.submissions, base, execution.names) }}
+{% if meta.can_withdraw %}<details class="card execution-section execution-details"><summary>撤回本次验收</summary><p class="muted">需要补充材料或更换验收安排时，可先撤回。原提交记录继续保留。</p><form class="stack" method="post" action="{{ base }}/tasks/{{ task.id }}/withdraw">{{ tokens(csrf, task.version) }}<label class="field"><span>撤回原因</span><textarea name="reason" required maxlength="2000"></textarea></label><button class="secondary" type="submit">撤回验收</button></form></details>{% endif %}
+{% if execution.can_manage and execution.can_execute and task.status not in ['done', 'cancelled', 'review'] %}<details class="card execution-section execution-details"><summary>取消任务</summary><p class="muted">取消任务会从项目平均进度中排除，取消原因会留在项目动态中。</p><form class="stack" method="post" action="{{ base }}/tasks/{{ task.id }}/progress">{{ tokens(csrf, task.version) }}<input type="hidden" name="status" value="cancelled"><input type="hidden" name="progress" value="{{ task.progress }}"><label class="field"><span>取消原因</span><textarea name="note" required></textarea></label><button class="danger" type="submit">确认取消任务</button></form></details>{% endif %}
+{% endblock %}

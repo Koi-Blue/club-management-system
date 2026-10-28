@@ -6,6 +6,7 @@
     <h1>{{ project.title }}</h1>
     <p class="muted">{{ project.department }} · {{ project.leader }} · {{ project.updated_at }} · <span class="badge badge-{{ project.status }}">{{ project_status[project.status] }}</span></p>
   </div>
+  <a data-page-link class="button" href="/projects/{{ project.id }}/execution">项目执行工作台</a>
 </header>
 <section class="grid two">
   <article class="card">
@@ -18,7 +19,7 @@
       {% if project.can_edit %}<a data-page-link class="secondary" href="/projects/{{ project.id }}/edit">编辑</a>{% endif %}
       {% if project.can_edit_members %}<a data-page-link class="secondary" href="/projects/{{ project.id }}/edit">调整成员</a>{% endif %}
       {% if project.can_withdraw %}<form method="post" action="/projects/{{ project.id }}/withdraw"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">撤回为草稿</button></form>{% endif %}
-      {% if project.can_archive %}<form method="post" action="/projects/{{ project.id }}/archive"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">归档留存</button></form>{% endif %}
+      {% if project.can_archive %}<form method="post" action="/projects/{{ project.id }}/archive"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">{% if project.execution_enabled %}结项归档{% else %}归档留存{% endif %}</button></form>{% endif %}
       {% if project.can_delete %}<form method="post" action="/projects/{{ project.id }}/delete" onsubmit="return confirm('确定删除这个立项？关联成员和已上传资料会一起删掉。')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger" type="submit">删除</button></form>{% endif %}
     </div>
     {% if project.can_review %}
