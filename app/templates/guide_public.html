@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>系统使用说明书 · {{ club_name }}</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css?v=20261014-library">
+</head>
+<body>
+  <div class="guide-public">
+    <div class="guide-public-bar">
+      <strong>{{ club_name }}</strong>
+      <a href="/login">返回登录</a>
+    </div>
+    {% include "guide_sections.html" %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}我的任务与验收 · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>我的任务与验收</h1><p class="muted">仅显示你当前仍可访问的项目。已归档或未启用执行管理的项目不会生成执行待办。</p></div><a data-page-link class="secondary" href="/projects">全部项目</a></header>
+<section class="card execution-section"><h2>我的任务</h2>{% for item in todo_data.tasks %}<a data-page-link class="item" href="{{ item.href }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.project_title }} · {{ item.planned_end or '待排期' }} · {{ item.status_label }}{% if item.overdue %} · 已逾期{% endif %}</p></a>{% else %}<p class="empty">当前没有待处理的任务。</p>{% endfor %}</section>
+<section class="card execution-section"><h2>待我验收</h2>{% for item in todo_data.reviews %}<a data-page-link class="item" href="{{ item.href }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.project_title }} · {{ '关键任务' if item.kind == 'task' else '里程碑' }}</p></a>{% else %}<p class="empty">当前没有待验收成果。</p>{% endfor %}</section>
+<section class="card execution-section"><h2>我负责的里程碑</h2>{% for item in todo_data.milestones %}<a data-page-link class="item" href="{{ item.href }}"><h3>{{ item.title }}</h3><p class="muted">{{ item.project_title }} · {{ item.planned_end or '待排期' }} · {{ item.status_label }}</p></a>{% else %}<p class="empty">当前没有待提交的里程碑。</p>{% endfor %}</section>
+{% endblock %}

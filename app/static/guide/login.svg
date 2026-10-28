@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 188" fill="none">
+  <rect width="680" height="188" rx="12" fill="#f7f8fa"/>
+  <rect x="20" y="18" width="250" height="152" rx="12" fill="#fff" stroke="#e4e6ea"/>
+  <text x="36" y="46" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">用户名或手机号</text>
+  <rect x="36" y="54" width="218" height="22" rx="6" fill="#f3f4f6" stroke="#e4e6ea"/>
+  <text x="36" y="96" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">密码</text>
+  <rect x="36" y="104" width="218" height="22" rx="6" fill="#f3f4f6" stroke="#e4e6ea"/>
+  <text x="36" y="128" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13">验证码</text>
+  <rect x="36" y="136" width="100" height="22" rx="6" fill="#f3f4f6" stroke="#e4e6ea"/>
+  <rect x="144" y="136" width="110" height="22" rx="6" fill="#3a3f46"/>
+  <text x="178" y="151" fill="#fff" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">进入</text>
+  <circle cx="312" cy="48" r="11" fill="#3a3f46"/>
+  <text x="308" y="52" fill="#fff" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">1</text>
+  <text x="332" y="52" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">填写用户名或手机号</text>
+  <circle cx="312" cy="96" r="11" fill="#3a3f46"/>
+  <text x="308" y="100" fill="#fff" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">2</text>
+  <text x="332" y="100" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">对照图片填写验证码</text>
+  <circle cx="312" cy="144" r="11" fill="#3a3f46"/>
+  <text x="308" y="148" fill="#fff" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="12">3</text>
+  <text x="332" y="148" fill="#1c1e22" font-family="Noto Sans SC, Microsoft YaHei, sans-serif" font-size="14">点「进入」</text>
+</svg>

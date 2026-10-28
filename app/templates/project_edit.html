@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{% if members_only %}调整成员{% else %}编辑立项{% endif %} · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>{% if members_only %}调整成员{% else %}编辑立项{% endif %}</h1></div></header>
+<form class="card form-grid" method="post" action="/projects/{{ project.id }}/edit">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if not members_only %}
+  <label class="field"><span>部门</span><select name="department">{% for dept in choices %}<option {% if dept == project.department %}selected{% endif %}>{{ dept }}</option>{% endfor %}</select></label>
+  <label class="field"><span>项目名称</span><input name="title" value="{{ project.title }}" required></label>
+  <label class="field span-2"><span>说明</span><textarea name="summary">{{ project.summary }}</textarea></label>
+  {% endif %}
+  <div class="span-2">
+    <p class="group-label">关联成员</p>
+    <p class="muted">可勾选任意部门的已启用成员，不含超级管理员。</p>
+    <div class="roles">
+      {% for person in people %}<label><input type="checkbox" name="members" value="{{ person.id }}" {% if person.checked %}checked{% endif %}>{{ person.department }} · {{ person.class_name }} {{ person.real_name }}{% if person.inactive %}（已停用或注销，历史成员）{% endif %}</label>{% endfor %}
+    </div>
+  </div>
+  <div class="actions span-2"><button class="primary" type="submit">保存</button><a data-page-link class="secondary" href="/projects/{{ project.id }}">返回</a></div>
+</form>
+{% endblock %}

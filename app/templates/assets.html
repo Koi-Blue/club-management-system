@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}资产 · {{ club_name }}{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>资产</h1></div></header>
+<section class="grid two">
+  <article class="card">
+    <h2>资产</h2>
+    {% if assets %}
+    <table>
+      <thead><tr><th>名称</th><th>类型</th><th>可用 / 总数</th><th>位置</th></tr></thead>
+      <tbody>{% for item in assets %}<tr><td>{{ item.name }}<div class="muted">{{ item.category }} {{ item.description }}</div></td><td>{% if me.is_admin %}<form class="kind-form" method="post" action="/assets/{{ item.id }}/kind"><input type="hidden" name="csrf" value="{{ csrf }}"><select name="kind" aria-label="{{ item.name }}的类型"><option value="instrument" {% if item.kind == 'instrument' %}selected{% endif %}>仪器</option><option value="consumable" {% if item.kind == 'consumable' %}selected{% endif %}>耗材</option></select><button class="secondary" type="submit">改类型</button></form>{% else %}{{ item.kind_label }}{% endif %}</td><td>{{ item.available }} / {{ item.total_qty }}</td><td>{{ item.location }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% else %}<p class="empty">还没有登记资产。</p>{% endif %}
+    {% if me.can_manage_asset %}
+    <hr class="sep">
+    <form class="form-grid" method="post" action="/assets">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>名称</span><input name="name" required></label>
+      <label class="field"><span>类型</span><select name="kind"><option value="instrument" selected>仪器</option><option value="consumable">耗材</option></select></label>
+      <label class="field"><span>分类</span><input name="category" value="物资"></label>
+      <label class="field"><span>数量</span><input name="total_qty" type="number" min="1" value="1" required></label>
+      <label class="field"><span>位置</span><input name="location"></label>
+      <label class="field"><span>说明</span><input name="description"></label>
+      <div class="span-2"><button class="primary" type="submit">登记资产</button></div>
+    </form>
+    {% endif %}
+  </article>
+  <article class="card">
+    <h2>申请借用</h2>
+    {% if instruments %}
+    <form class="stack" method="post" action="/borrows">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>仪器</span><select name="asset_id">{% for item in instruments %}<option value="{{ item.id }}">{{ item.name }}（可借 {{ item.available }}）</option>{% endfor %}</select></label>
+      <label class="field"><span>数量</span><input name="qty" type="number" min="1" value="1" required></label>
+      <label class="field"><span>预计归还</span><input name="due_at" type="datetime-local" required></label>
+      <label class="field"><span>事由</span><input name="reason"></label>
+      <button class="primary" type="submit">提交借用申请</button>
+    </form>
+    {% else %}<p class="empty">没有可借的仪器。</p>{% endif %}
+    <hr class="sep">
+    <h2>申请领用</h2>
+    {% if consumables %}
+    <form class="stack" method="post" action="/issues">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><span>耗材</span><select name="asset_id">{% for item in consumables %}<option value="{{ item.id }}">{{ item.name }}（可领 {{ item.available }}）</option>{% endfor %}</select></label>
+      <label class="field"><span>数量</span><input name="qty" type="number" min="1" value="1" required></label>
+      <label class="field"><span>事由</span><input name="reason"></label>
+      <button class="primary" type="submit">提交领用申请</button>
+    </form>
+    {% else %}<p class="empty">没有可领的耗材。</p>{% endif %}
+  </article>
+</section>
+<section class="card" style="margin-top:1rem">
+  <h2>和我有关的借用与领用</h2>
+  {% if borrows %}
+  <table>
+    <thead><tr><th>资产</th><th>方式</th><th>申请人</th><th>数量</th><th>预计归还</th><th>状态</th><th></th></tr></thead>
+    <tbody>
+      {% for item in borrows %}
+      <tr>
+        <td>{{ item.asset }}<div class="muted">{{ item.reason }}</div></td>
+        <td>{{ item.flow }}</td>
+        <td>{{ item.user }}</td>
+        <td>{{ item.qty }}</td>
+        <td>{{ item.due_at or "—" }}</td>
+        <td><span class="badge badge-{{ item.status }}">{{ item.status_label }}</span></td>
+        <td>
+          {% if item.can_review %}
+          <form method="post" action="/borrows/{{ item.id }}/review" class="actions">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input name="comment" placeholder="意见">
+            <button class="primary" name="decision" value="approved" type="submit">通过</button>
+            <button class="danger" name="decision" value="rejected" type="submit">驳回</button>
+          </form>
+          {% endif %}
+          {% if item.can_return %}<form method="post" action="/borrows/{{ item.id }}/return"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary" type="submit">登记归还</button></form>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">没有需要你处理或你申请的借用、领用。</p>{% endif %}
+</section>
+{% endblock %}

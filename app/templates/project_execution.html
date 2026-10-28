@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "project_execution_macros.html" import tokens, person_select %}
+{% block title %}执行工作台 · {{ execution.project.title }}{% endblock %}
+{% block content %}
+{% set p = execution.project %}
+<header class="page-head">
+  <div><p class="eyebrow">项目执行</p><h1>{{ p.title }}</h1><p class="muted">执行负责人：{{ execution.manager_name or '待指定' }} · {{ '执行管理已启用' if p.execution_enabled else '沿用原项目流程' }}</p></div>
+  <div class="actions"><a data-page-link class="secondary" href="/projects/{{ p.id }}">立项与资料</a><a data-page-link class="secondary" href="/project-todos">我的任务与验收</a></div>
+</header>
+{% if p.status == 'archived' %}<p class="flash warn">项目已归档，执行计划与验收记录只读。</p>
+{% elif not p.execution_enabled %}
+<section class="card execution-section">
+  <h2>为原有项目建立执行计划</h2><p>现有项目团队、立项记录及文件权限继续保留。可以先编制阶段、任务和里程碑，再由执行负责人启用执行管理。</p>
+  <p class="muted">启用后，普通任务完成、关键任务及里程碑验收通过，才可由执行负责人或荣誉社长结项归档。</p>
+  {% if execution.can_enable %}<form method="post" action="{{ base }}/enable">{{ tokens(csrf, p.execution_version) }}<button class="primary" type="submit">确认计划并启用执行管理</button></form>{% endif %}
+</section>
+{% elif p.status != 'approved' %}<p class="flash warn">可以编制执行计划；立项审批通过后，才可更新进度、提交成果和验收。</p>{% endif %}
+<section class="execution-metrics" aria-label="项目执行概况">
+  <div><span>执行进度</span><strong>{{ (execution.stats.progress ~ '%') if execution.stats.progress is not none else '尚未建立计划' }}</strong></div>
+  <div><span>任务完成</span><strong>{{ execution.stats.task_done }} / {{ execution.stats.task_total }}</strong><small>不含已取消任务</small></div>
+  <div><span>里程碑通过</span><strong>{{ execution.stats.milestone_done }} / {{ execution.stats.milestone_total }}</strong><small>关键任务验收 {{ execution.stats.key_done }} / {{ execution.stats.key_total }}</small></div>
+</section>
+<p class="muted execution-hint">进度按有效任务等权平均。执行进度达到 100% 不代表关键成果已验收或项目可以归档。</p>
+<nav class="execution-nav" aria-label="项目执行内容"><a href="#execution-tasks">任务</a><a href="#execution-milestones">里程碑</a><a href="#execution-stages">阶段与负责人</a><a href="#execution-events">动态</a></nav>
+<section class="card execution-section" id="execution-tasks">
+  <div class="execution-section-head"><h2>任务计划</h2>{% if execution.can_manage %}<a data-page-link class="button" href="{{ base }}/tasks/new">添加任务</a>{% endif %}</div>
+  <form method="get" action="{{ base }}" class="execution-filters">
+    <label class="field"><span>阶段</span><select name="stage"><option value="">全部阶段</option>{% for stage in execution.stages %}<option value="{{ stage.id }}" {% if filters.stage == stage.id|string %}selected{% endif %}>{{ stage.title }}</option>{% endfor %}</select></label>
+    <label class="field"><span>负责人</span><select name="owner"><option value="">全部负责人</option>{% for person in execution.people %}<option value="{{ person.id }}" {% if filters.owner == person.id|string %}selected{% endif %}>{{ person.name }}</option>{% endfor %}</select></label>
+    <label class="field"><span>任务状态</span><select name="status"><option value="">全部状态</option>{% for value, label in task_status.items() %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <button class="secondary" type="submit">筛选</button><a data-page-link href="{{ base }}">重置</a>
+  </form>
+  {% if filtered_tasks %}<div class="execution-table-wrap"><table class="execution-task-table">
+    <thead><tr><th>任务 / 阶段</th><th>负责人</th><th>计划日期</th><th>进度</th><th>状态</th></tr></thead>
+    <tbody>{% for task in filtered_tasks %}{% set meta = execution.task_meta[task.id] %}<tr>
+      <td data-label="任务"><a data-page-link href="{{ base }}/tasks/{{ task.id }}">{{ task.title }}</a>{% if task.is_key %}<span class="badge">关键任务</span>{% endif %}<small>{{ execution.stage_names.get(task.stage_id, '未分阶段') }} · {{ priorities.get(task.priority, task.priority) }}优先级</small></td>
+      <td data-label="负责人">{{ execution.names.get(task.owner_id, '待指定') }}</td>
+      <td data-label="计划日期">{{ task.planned_start or '待排期' }} → {{ task.planned_end or '待排期' }}{% if meta.duration %}<small>{{ meta.duration }} 个自然日</small>{% endif %}</td>
+      <td data-label="进度">{{ task.progress }}%</td>
+      <td data-label="状态"><span class="badge">{{ task_status.get(task.status, task.status) }}</span>{% if meta.overdue %}<span class="badge execution-warning">已逾期</span>{% endif %}{% if task.blocked_reason %}<span class="badge execution-warning">受阻</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>{% else %}<p class="empty">{{ '没有符合筛选条件的任务。' if execution.tasks else '尚未建立任务计划。' }}</p>{% endif %}
+</section>
+<section class="card execution-section" id="execution-milestones">
+  <div class="execution-section-head"><h2>里程碑</h2>{% if execution.can_manage %}<a data-page-link class="secondary" href="{{ base }}/milestones/new">添加里程碑</a>{% endif %}</div>
+  {% for milestone in execution.milestones %}<div class="item execution-milestone-row"><div><a data-page-link href="{{ base }}/milestones/{{ milestone.id }}">{{ milestone.title }}</a><p class="muted">{{ milestone.planned_date or '待排期' }} · {{ execution.names.get(milestone.owner_id, '待指定') }} · {{ execution.stage_names.get(milestone.stage_id, '跨阶段') }}</p><p class="execution-text">{{ milestone.acceptance_criteria }}</p></div><span class="badge">{{ milestone_status.get(milestone.status, milestone.status) }}</span></div>{% else %}<p class="empty">尚未设置里程碑。</p>{% endfor %}
+</section>
+<section class="card execution-section" id="execution-stages"><h2>阶段与负责人</h2>
+  {% if execution.can_assign_manager %}<details class="execution-details"><summary>指定或更换执行负责人</summary><form class="form-grid" method="post" action="{{ base }}/manager">{{ tokens(csrf, p.execution_version) }}{{ person_select(execution.people, 'manager_id', '执行负责人', p.manager_id) }}<label class="field"><span>变更原因</span><input name="reason" required maxlength="1000"></label><div class="actions span-2"><button class="secondary" type="submit">保存负责人</button></div></form></details>{% endif %}
+  {% for stage in execution.stages %}
+    {% if execution.can_manage %}<details class="execution-details"><summary>{{ stage.title }}</summary><form class="execution-filters" method="post" action="{{ base }}/stages/{{ stage.id }}/edit">{{ tokens(csrf, stage.version) }}<label class="field"><span>阶段名称</span><input name="title" value="{{ stage.title }}" required maxlength="100"></label><label class="field"><span>排序</span><input type="number" name="position" value="{{ stage.position }}" min="0"></label><button class="secondary" type="submit">保存阶段</button></form></details>{% else %}<p>{{ stage.title }}</p>{% endif %}
+  {% else %}<p class="muted">尚未设置阶段。</p>{% endfor %}
+  {% if execution.can_manage %}<details class="execution-details"><summary>添加阶段</summary><form class="execution-filters" method="post" action="{{ base }}/stages">{{ tokens(csrf, '') }}<label class="field"><span>阶段名称</span><input name="title" required maxlength="100"></label><label class="field"><span>排序</span><input type="number" name="position" value="{{ execution.stages|length + 1 }}" min="0"></label><button class="secondary" type="submit">添加阶段</button></form></details>{% endif %}
+</section>
+<section class="card execution-section" id="execution-events"><h2>项目动态</h2>
+  {% for event in execution.events %}<div class="execution-history"><p class="execution-text">{{ event.message }}</p><p class="muted">{{ event.actor }} · {{ event.created_at }}</p></div>{% else %}<p class="empty">还没有执行管理记录。</p>{% endfor %}
+</section>
+{% endblock %}

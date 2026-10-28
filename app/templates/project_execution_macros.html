@@ -1,0 +1,38 @@
+{% macro tokens(csrf, version) -%}
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<input type="hidden" name="version" value="{{ version }}">
+{%- endmacro %}
+
+{% macro person_select(people, name, label, selected=none, required=true) -%}
+<label class="field"><span>{{ label }}</span><select name="{{ name }}" {% if required %}required{% endif %}>
+  <option value="">请选择</option>
+  {% for person in people %}<option value="{{ person.id }}" {% if person.id == selected %}selected{% endif %}>{{ person.name }}</option>{% endfor %}
+</select></label>
+{%- endmacro %}
+
+{% macro files_picker(files) -%}
+<fieldset class="execution-fieldset"><legend>本次交付文件</legend>
+{% if files %}<div class="execution-choices">{% for file in files %}<label><input type="checkbox" name="file_ids" value="{{ file.id }}">{{ file.name }}</label>{% endfor %}</div>
+{% else %}<p class="muted">尚无可选资料，请先到项目资料区上传。</p>{% endif %}
+<p class="muted">仅列出你可见的文件。提交时会检查验收人是否也可读取；不会自动扩大文件权限。</p>
+</fieldset>
+{%- endmacro %}
+
+{% macro history(submissions, base, names) -%}
+{% if submissions %}
+<section class="card execution-section"><h2>交付与验收记录</h2>
+{% for entry in submissions %}
+<article class="execution-history">
+  <h3>第 {{ loop.revindex }} 次提交 · {{ entry.status_label }}</h3>
+  <p class="muted">{{ entry.submitter }} · {{ entry.submitted_at }}</p>
+  <p class="execution-text">{{ entry.note }}</p>
+  {% if entry.criteria_snapshot %}<p class="execution-text">提交时的验收标准：{{ entry.criteria_snapshot }}</p>{% endif %}
+  {% for file in entry.files %}<p><a href="{{ file.url }}">{{ file.name }}</a></p>{% endfor %}
+  {% if entry.hidden_file_count %}<p class="muted">部分交付文件不在你的可见范围内。</p>{% endif %}
+  {% if entry.status == 'withdrawn' %}<p class="muted">撤回时间：{{ entry.reviewed_at }}</p><p class="execution-text">撤回原因：{{ entry.review_comment }}</p>
+  {% elif entry.reviewed_at %}<p class="muted">{{ entry.reviewer }} · {{ entry.reviewed_at }}</p><p class="execution-text">验收意见：{{ entry.review_comment }}</p>{% endif %}
+</article>
+{% endfor %}
+</section>
+{% endif %}
+{%- endmacro %}
