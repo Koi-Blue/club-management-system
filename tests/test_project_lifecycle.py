@@ -329,7 +329,7 @@ def test_delete_draft_or_rejected_removes_members_and_files(club):
         assert db.scalar(select(func.count()).select_from(ProjectFile).where(ProjectFile.project_id == pending_id)) == 0
 
 
-def test_reject_then_edit_resubmit_and_archive_upload_stay_bounded(club):
+def test_legacy_reject_then_edit_resubmit_and_archive_upload_stay_bounded(club):
     admin = club["admin"]
     tech, tech_id = club["member"]("林夏同学", "技术部")
     promo, promo_id = club["member"]("周宁同学", "宣传部")
@@ -339,6 +339,11 @@ def test_reject_then_edit_resubmit_and_archive_upload_stay_bounded(club):
     created = create_project(tech, "展示柜", "技术部", [tech_id], "第一版")
     project_path = created.url.path
     project_id = int(project_path.rsplit("/", 1)[-1])
+    # This regression exercises projects created before execution management.
+    # Newly created projects use the stricter completion gate, covered separately.
+    with database.SessionLocal() as db:
+        db.get(Project, project_id).execution_enabled = False
+        db.commit()
     assert "展示柜" not in promo.get("/projects").text
     assert "没有查看权限" in promo.get(project_path).text
     assert "已提交审批" in post(tech, f"{project_path}/submit").text

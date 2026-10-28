@@ -26,6 +26,7 @@ from app.models import (
     Meeting,
     PasswordReset,
     Project,
+    ProjectEvent,
     ProjectFile,
     ProjectFileViewer,
     ProjectMember,
@@ -619,6 +620,12 @@ def project_member_candidates(db: Session) -> list[User]:
 
 
 def project_member_options(db: Session, checked_ids: set[int]) -> list[dict]:
+    # An existing inactive member is history, not a fresh assignment. Keep the
+    # checkbox visible so saving an unrelated edit cannot silently drop them.
+    candidates = {row.id: row for row in project_member_candidates(db)}
+    if checked_ids:
+        for row in db.scalars(select(User).where(User.id.in_(checked_ids))):
+            candidates.setdefault(row.id, row)
     return [
         {
             "id": row.id,
@@ -626,22 +633,23 @@ def project_member_options(db: Session, checked_ids: set[int]) -> list[dict]:
             "class_name": row.class_name,
             "department": row.department,
             "checked": row.id in checked_ids,
+            "inactive": row.status != "active",
         }
-        for row in project_member_candidates(db)
+        for row in sorted(candidates.values(), key=lambda row: (row.department, row.real_name, row.id))
     ]
 
 
-def active_member_ids(db: Session, member_ids: list[int]) -> list[int]:
+def active_member_ids(db: Session, member_ids: list[int], *, keeping_ids: set[int] | None = None) -> list[int]:
     """任意部门的已启用、非超级管理员账号都可以作为关联成员。"""
     selected = []
     for raw in member_ids:
         if raw in selected:
             continue
         member = db.get(User, raw)
-        if member is None or member.status != "active" or member.is_admin:
+        if member is None or ((member.status != "active" or member.is_admin) and raw not in (keeping_ids or set())):
             raise AppError("关联成员里有无效账号")
         selected.append(raw)
-    if not selected:
+    if not selected and keeping_ids != set():
         raise AppError("请勾选关联成员")
     return selected
 
@@ -655,11 +663,14 @@ def create_project(db: Session, user: User, roles: list[str], title: str, summar
         department=department,
         status="draft",
         leader_id=user.id,
+        manager_id=user.id,
+        execution_enabled=True,
     )
     db.add(project)
     db.flush()
     for member_id in selected:
         db.add(ProjectMember(project_id=project.id, user_id=member_id))
+    db.add(ProjectEvent(project_id=project.id, actor_id=user.id, kind="created", message="新建立项，启用项目执行管理"))
     db.commit()
     db.refresh(project)
     return project
@@ -667,6 +678,9 @@ def create_project(db: Session, user: User, roles: list[str], title: str, summar
 
 def submit_project(db: Session, user: User, roles: list[str], project_id: int) -> None:
     project = db.get(Project, project_id)
+    if project is not None:
+        from app.project_execution import lock_project
+        lock_project(db, project)
     if project is None or not can_manage_project(db, user, roles, project):
         raise AppError("没有权限提交这个立项")
     project.status = "pending"
@@ -676,9 +690,14 @@ def submit_project(db: Session, user: User, roles: list[str], project_id: int) -
 
 
 def _replace_project_members(db: Session, project: Project, member_ids: list[int]) -> None:
-    db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id))
-    db.flush()
-    for member_id in member_ids:
+    from app.project_execution import guard_members_change
+    guard_members_change(db, project, member_ids)
+    existing = {row.user_id: row for row in db.scalars(select(ProjectMember).where(ProjectMember.project_id == project.id))}
+    selected = set(member_ids)
+    for user_id, row in existing.items():
+        if user_id not in selected:
+            db.delete(row)
+    for member_id in selected - existing.keys():
         db.add(ProjectMember(project_id=project.id, user_id=member_id))
 
 
@@ -686,7 +705,15 @@ def update_project(db: Session, user: User, roles: list[str], project_id: int, t
     project = db.get(Project, project_id)
     if project is None or not is_project_leader(user, project):
         raise AppError("没有权限修改这个立项")
-    selected = active_member_ids(db, member_ids)
+    from app.project_execution import lock_project
+    lock_project(db, project)
+    selected = active_member_ids(db, member_ids, keeping_ids=set(project_member_ids(db, project.id)))
+    previous_members = set(project_member_ids(db, project.id))
+    if previous_members != set(selected):
+        changed_names = name_map(db, previous_members | set(selected))
+        added = "、".join(changed_names.get(uid, str(uid)) for uid in sorted(set(selected) - previous_members)) or "无"
+        removed = "、".join(changed_names.get(uid, str(uid)) for uid in sorted(previous_members - set(selected))) or "无"
+        db.add(ProjectEvent(project_id=project.id, actor_id=user.id, kind="members", message=f"调整团队：新增 {added}；移出 {removed}"))
     if project.status == "approved":
         _replace_project_members(db, project, selected)
         project.updated_at = utcnow()
@@ -707,6 +734,8 @@ def withdraw_project(db: Session, user: User, project_id: int) -> None:
     project = db.get(Project, project_id)
     if project is None or not is_project_leader(user, project):
         raise AppError("没有权限撤回这个立项")
+    from app.project_execution import lock_project
+    lock_project(db, project)
     if project.status != "pending":
         raise AppError("只有待审批的立项可以撤回")
     project.status = "draft"
@@ -721,8 +750,12 @@ def delete_project(db: Session, user: User, roles: list[str], upload_dir: str, p
     project = db.get(Project, project_id)
     if project is None or not is_project_leader(user, project):
         raise AppError("没有权限删除这个立项")
+    from app.project_execution import lock_project
+    lock_project(db, project)
     if not can_manage_project(db, user, roles, project):
         raise AppError("只有草稿或已驳回的立项可以删除")
+    from app.project_execution import delete_execution_data
+    delete_execution_data(db, project.id)
     files = db.scalars(select(ProjectFile).where(ProjectFile.project_id == project.id)).all()
     file_ids = [row.id for row in files]
     if file_ids:
@@ -748,6 +781,9 @@ def review_project(db: Session, user: User, roles: list[str], project_id: int, d
     if not can_approve_project(user.is_admin, roles):
         raise AppError("没有权限审批立项")
     project = db.get(Project, project_id)
+    if project is not None:
+        from app.project_execution import lock_project
+        lock_project(db, project)
     if project is None or project.status != "pending":
         raise AppError("当前状态不能审批")
     if decision not in {"approved", "rejected"}:
@@ -762,12 +798,20 @@ def review_project(db: Session, user: User, roles: list[str], project_id: int, d
 
 def archive_project(db: Session, user: User, roles: list[str], project_id: int) -> None:
     project = db.get(Project, project_id)
+    if project is not None:
+        from app.project_execution import lock_project
+        lock_project(db, project)
     if project is None or project.status != "approved":
         raise AppError("只有进行中的立项可以归档")
-    if not project_related(db, user, project) and not can_approve_project(user.is_admin, roles):
+    if project.execution_enabled:
+        from app.project_execution import assert_can_archive
+        assert_can_archive(db, user, roles, project)
+    elif not project_related(db, user, project) and not can_approve_project(user.is_admin, roles):
         raise AppError("没有权限归档")
     project.status = "archived"
     project.updated_at = utcnow()
+    if project.execution_enabled:
+        db.add(ProjectEvent(project_id=project.id, actor_id=user.id, kind="archived", message="任务及里程碑已完成，项目结项归档"))
     db.commit()
 
 
@@ -918,6 +962,7 @@ def visible_project_files(db: Session, user: User, roles: list[str], project: Pr
 
 
 def project_files_for(db: Session, user: User, roles: list[str], project: Project) -> list[dict]:
+    from app.project_execution import is_file_protected
     rows = db.scalars(select(ProjectFile).where(ProjectFile.project_id == project.id).order_by(ProjectFile.uploaded_at.desc())).all()
     visible = visible_project_files(db, user, roles, project, list(rows))
     selected_ids = [row.id for row in visible if (row.visibility or "all") == "selected"]
@@ -947,7 +992,9 @@ def project_files_for(db: Session, user: User, roles: list[str], project: Projec
             "uploaded_at": fmt_dt(row.uploaded_at),
             "size": row.size,
             "scope": scope,
-            "can_delete": row.uploader_id == user.id or user.is_admin or sees_all_projects(roles),
+            "can_delete": (row.uploader_id == user.id or user.is_admin or sees_all_projects(roles))
+                and not (project.execution_enabled and project.status == "archived")
+                and not is_file_protected(db, row.id),
         })
     return listed
 
@@ -958,6 +1005,10 @@ def save_project_file(db: Session, user: User, roles: list[str], upload_dir: str
         raise AppError("找不到这个立项")
     if not project_related(db, user, project) and not sees_all_projects(roles):
         raise AppError("没有权限上传资料")
+    from app.project_execution import lock_project
+    lock_project(db, project)
+    if project.execution_enabled and project.status == "archived":
+        raise AppError("项目已结项归档，资料只读")
     audience = project_audience_ids(db, project)
     allowed = set(audience)
     selected: list[int] = []
@@ -992,6 +1043,12 @@ def delete_project_file(db: Session, user: User, roles: list[str], upload_dir: s
         raise AppError("找不到这个文件")
     if user.id != row.uploader_id and not user.is_admin and not sees_all_projects(roles):
         raise AppError("没有权限删除这个文件")
+    from app.project_execution import is_file_protected, lock_project
+    lock_project(db, project)
+    if project.execution_enabled and project.status == "archived":
+        raise AppError("项目已结项归档，资料只读")
+    if is_file_protected(db, row.id):
+        raise AppError("文件已用于交付记录，请保留原版本并另行上传新版本")
     path = safe_path(upload_dir, ["projects", str(project_id), row.stored_name])
     if path.exists():
         path.unlink()

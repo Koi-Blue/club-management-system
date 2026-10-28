@@ -13,7 +13,7 @@
     <p class="group-label">关联成员</p>
     <p class="muted">可勾选任意部门的已启用成员，不含超级管理员。</p>
     <div class="roles">
-      {% for person in people %}<label><input type="checkbox" name="members" value="{{ person.id }}" {% if person.checked %}checked{% endif %}>{{ person.department }} · {{ person.class_name }} {{ person.real_name }}</label>{% endfor %}
+      {% for person in people %}<label><input type="checkbox" name="members" value="{{ person.id }}" {% if person.checked %}checked{% endif %}>{{ person.department }} · {{ person.class_name }} {{ person.real_name }}{% if person.inactive %}（已停用或注销，历史成员）{% endif %}</label>{% endfor %}
     </div>
   </div>
   <div class="actions span-2"><button class="primary" type="submit">保存</button><a data-page-link class="secondary" href="/projects/{{ project.id }}">返回</a></div>

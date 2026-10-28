@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "project_execution_macros.html" import tokens, person_select %}
+{% block title %}{{ '编辑任务' if task else '添加任务' }} · {{ execution.project.title }}{% endblock %}
+{% block content %}
+{% set meta = execution.task_meta[task.id] if task else {} %}
+<header class="page-head"><div><h1>{{ '编辑任务计划' if task else '添加任务' }}</h1><p class="muted">{{ execution.project.title }} · 日期采用北京时间对应的自然日，工期包含首尾日期。</p></div><a data-page-link href="{{ base }}">返回工作台</a></header>
+<form class="card form-grid execution-form" method="post" action="{{ base }}/tasks{% if task %}/{{ task.id }}/edit{% endif %}">
+  {{ tokens(csrf, task.version if task else '') }}
+  <label class="field span-2"><span>任务名称</span><input name="title" value="{{ task.title if task else '' }}" required maxlength="160"></label>
+  <label class="field"><span>所属阶段</span><select name="stage_id" required><option value="">请选择阶段</option>{% for stage in execution.stages %}<option value="{{ stage.id }}" {% if task and task.stage_id == stage.id %}selected{% endif %}>{{ stage.title }}</option>{% endfor %}</select></label>
+  {{ person_select(execution.people, 'owner_id', '主负责人', task.owner_id if task else none) }}
+  <label class="field"><span>计划开始（与完成日期同时填写）</span><input type="date" name="planned_start" value="{{ task.planned_start or '' if task else '' }}"></label>
+  <label class="field"><span>计划完成</span><input type="date" name="planned_end" value="{{ task.planned_end or '' if task else '' }}"></label>
+  <label class="field"><span>优先级</span><select name="priority">{% for value, label in priorities.items() %}<option value="{{ value }}" {% if (task and task.priority == value) or (not task and value == 'medium') %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label class="checkbox-field"><input type="checkbox" name="is_key" value="1" {% if task and task.is_key %}checked{% endif %}>关键任务，需要独立验收</label>
+  <label class="field span-2"><span>预期交付物</span><textarea name="deliverable" required maxlength="4000" placeholder="例如：标定数据、线性拟合结果及测试说明">{{ task.deliverable if task else '' }}</textarea></label>
+  {{ person_select(execution.reviewers, 'reviewer_id', '验收人（关键任务必选，不能是主负责人）', task.reviewer_id if task else none, false) }}
+  <label class="field"><span>验收标准（关键任务必填）</span><textarea name="acceptance_criteria" maxlength="4000">{{ task.acceptance_criteria if task else '' }}</textarea></label>
+  <fieldset class="execution-fieldset span-2"><legend>协作人</legend><div class="execution-choices">{% for person in execution.people %}<label><input type="checkbox" name="collaborator_ids" value="{{ person.id }}" {% if person.id in meta.get('collaborator_ids', []) %}checked{% endif %}>{{ person.name }}</label>{% endfor %}</div></fieldset>
+  <fieldset class="execution-fieldset span-2"><legend>前置任务</legend><p class="muted">可跨阶段选择同项目任务。系统检查循环依赖和日期冲突，不自动顺延计划。</p><div class="execution-choices">{% for other in execution.tasks %}{% if not task or other.id != task.id %}<label><input type="checkbox" name="predecessor_ids" value="{{ other.id }}" {% if other.id in meta.get('predecessor_ids', []) %}checked{% endif %}>{{ other.title }}</label>{% endif %}{% endfor %}</div></fieldset>
+  {% if task %}<label class="field span-2"><span>本次变更原因</span><textarea name="reason" required maxlength="2000" placeholder="说明改期、调整分工或变更任务范围的原因"></textarea></label>{% endif %}
+  <div class="actions span-2"><button class="primary" type="submit">{{ '保存变更' if task else '添加任务' }}</button><a data-page-link class="secondary" href="{{ base }}">取消</a></div>
+</form>
+{% endblock %}
